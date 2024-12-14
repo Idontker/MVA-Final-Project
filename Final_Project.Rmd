@@ -1,0 +1,749 @@
+---
+title: "MVA_Final_Project"
+output: pdf_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Final Project : Autombolie Dataset
+
+## Libraries
+
+```{r}
+
+install.packages("vegan")
+
+# Load libraries
+library(ggplot2)
+library(dplyr)
+
+library(tidyr)
+
+```
+
+## Explorative Data Analysis
+
+```{r}
+# Load the dataset
+data <- read.csv("./Automobile_data.csv", header = TRUE, sep = ",")
+# Summary statistics
+summary(data)
+
+# Check for missing values
+colSums(is.na(data))
+
+# Quick look at the data
+head(data)
+
+```
+
+### **Categorical Variables**
+
+1.  **symboling**:
+    -   Meaning: Risk factor of the car (insurance purposes).
+    -   Values: Ranges from -2 (very safe) to 3 (risky).
+2.  **normalized-losses**:
+    -   Meaning: Relative average loss payment per insured vehicle.
+    -   Values: Numeric but has missing values or encoded as `?`.
+3.  **make**:
+    -   Meaning: Car manufacturer/brand.
+    -   Values: Examples include Alfa-Romeo, Audi, BMW, Toyota, etc.
+4.  **fuel-type**:
+    -   Meaning: Type of fuel used by the car.
+    -   Values: `gas` or `diesel`.
+5.  **aspiration**:
+    -   Meaning: Indicates whether the engine uses a turbocharger.
+    -   Values: `std` (standard) or `turbo`.
+6.  **num-of-doors**:
+    -   Meaning: Number of doors in the car.
+    -   Values: `two` or `four`.
+7.  **body-style**:
+    -   Meaning: Style of the car body.
+    -   Values: `sedan`, `hatchback`, `wagon`, `convertible`, and `hardtop`.
+8.  **drive-wheels**:
+    -   Meaning: Drivetrain configuration of the car.
+    -   Values: `fwd` (front-wheel drive), `rwd` (rear-wheel drive), or `4wd` (four-wheel drive).
+9.  **engine-location**:
+    -   Meaning: Position of the engine in the car.
+    -   Values: `front` or `rear`.
+10. **engine-type**:
+    -   Meaning: Design of the engine.
+    -   Values: `dohc`, `ohc`, `ohcf`, `rotor`, etc.
+11. **num-of-cylinders**:
+    -   Meaning: Number of cylinders in the engine.
+    -   Values: `two`, `three`, `four`, `five`, `six`, `eight`, or `twelve`.
+12. **fuel-system**:
+    -   Meaning: Fuel delivery system of the car.
+    -   Values: `mpfi`, `2bbl`, `1bbl`, `spdi`, etc.
+
+------------------------------------------------------------------------
+
+### **Numerical Variables**
+
+1.  **wheel-base**:
+    -   Meaning: Distance between the front and rear wheels.
+    -   Values: Continuous, ranging from 86.6 to 120.9 inches.
+2.  **length**:
+    -   Meaning: Total length of the car.
+    -   Values: Continuous, ranging from 141.1 to 208.1 inches.
+3.  **width**:
+    -   Meaning: Width of the car.
+    -   Values: Continuous, ranging from 60.3 to 72.3 inches.
+4.  **height**:
+    -   Meaning: Height of the car.
+    -   Values: Continuous, ranging from 47.8 to 59.8 inches.
+5.  **curb-weight**:
+    -   Meaning: Weight of the car without passengers or cargo.
+    -   Values: Continuous, ranging from 1,488 to 4,066 pounds.
+6.  **engine-size**:
+    -   Meaning: Displacement of the engine (size of the engine).
+    -   Values: Continuous, ranging from 61 to 326 cubic inches.
+7.  **bore**:
+    -   Meaning: Diameter of the cylinder in the engine.
+    -   Values: Continuous, ranging from 2.54 to 3.94 inches.
+8.  **stroke**:
+    -   Meaning: Distance the piston travels in the cylinder.
+    -   Values: Continuous, ranging from 2.07 to 4.17 inches.
+9.  **compression-ratio**:
+    -   Meaning: Ratio of the volume of the cylinder when the piston is at the bottom to when it is at the top.
+    -   Values: Continuous, ranging from 7.0 to 23.0.
+10. **horsepower**:
+    -   Meaning: Power output of the car's engine.
+    -   Values: Continuous, ranging from 48 to 288.
+11. **peak-rpm**:
+    -   Meaning: Maximum revolutions per minute of the engine.
+    -   Values: Continuous, ranging from 4,150 to 6,600 RPM.
+12. **city-mpg**:
+    -   Meaning: Fuel efficiency in city driving conditions.
+    -   Values: Continuous, ranging from 13 to 49 miles per gallon.
+13. **highway-mpg**:
+    -   Meaning: Fuel efficiency in highway driving conditions.
+    -   Values: Continuous, ranging from 16 to 54 miles per gallon.
+14. **price**:
+    -   Meaning: Market price of the car.
+    -   Values: Continuous, ranging from \$5,118 to \$45,400.
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Load the dataset
+#data <- read.csv("path_to_your_file/Automobile_data.csv", stringsAsFactors = FALSE)
+
+# Replace "?" with NA for better handling of missing values
+data[data == "?"] <- NA
+
+# Convert numerical variables to numeric type
+numerical_vars <- c("symboling", "normalized.losses", "wheel.base", "engine.size", 
+                    "bore", "stroke", "compression.ratio", "horsepower", 
+                    "peak.rpm", "city.mpg", "highway.mpg", "price")
+
+data[numerical_vars] <- lapply(data[numerical_vars], as.numeric)
+
+# Create histograms for all numerical variables
+for (var in numerical_vars) {
+  if (!is.null(data[[var]]) && is.numeric(data[[var]])) {
+    ggplot(data, aes_string(x = var)) +
+      geom_histogram(binwidth = 10, fill = "blue", color = "black", alpha = 0.7) +
+      labs(title = paste("Distribution of", var), x = var, y = "Frequency") +
+      theme_minimal() -> plot
+    print(plot)
+  }
+}
+```
+
+```{r}
+# Create individual box plots for numerical variables
+for (var in numerical_vars) {
+  if (!is.null(data[[var]]) && is.numeric(data[[var]])) {
+    ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "blue", color = "black", alpha = 0.7, outlier.color = "red") +
+      labs(title = paste("Box Plot of", var), x = "", y = var) +
+      theme_minimal() -> plot
+    print(plot)
+  }
+}
+```
+
+```{r}
+# Replace "?" with NA for better handling of missing values
+data[data == "?"] <- NA
+
+# Calculate the number of missing values per column
+missing_values <- sapply(data, function(x) sum(is.na(x)))
+missing_data <- data.frame(Variable = names(missing_values), MissingCount = missing_values)
+
+# Filter to include only columns with missing values
+missing_data <- missing_data[missing_data$MissingCount > 0, ]
+
+# Plot the missing values
+ggplot(missing_data, aes(x = reorder(Variable, -MissingCount), y = MissingCount)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Missing Values per Column", x = "Variable", y = "Count of Missing Values") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+
+# Replace "?" with NA for better handling of missing values
+data[data == "?"] <- NA
+
+# Identify categorical variables
+categorical_vars <- data %>% select_if(is.character)
+
+# Convert to long format for faceted plotting
+categorical_long <- categorical_vars %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value")
+
+# Plot faceted bar plots
+ggplot(categorical_long, aes(x = Value, fill = Variable)) +
+  geom_bar() +
+  facet_wrap(~ Variable, scales = "free", ncol = 3) +
+  labs(title = "Distribution of Categorical Variables",
+       x = "Category", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+```{r}
+# Drop the 'normalized-losses' column
+data <- data %>% select(-`normalized.losses`)
+
+data <- data %>% select(- `symboling`)
+
+# Calculate the count of missing values per column
+missing_counts <- colSums(is.na(data))
+
+# Convert to a data frame for plotting
+missing_df <- data.frame(
+  Variable = names(missing_counts),
+  MissingValues = missing_counts
+)
+
+# Filter out columns with zero missing values (optional)
+missing_df <- missing_df %>% filter(MissingValues > 0)
+
+# Plot the distribution of missing values
+ggplot(missing_df, aes(x = reorder(Variable, -MissingValues), y = MissingValues)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Missing Values per Column",
+       x = "Variable",
+       y = "Count of Missing Values") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Impute missing values for 'bore' using mean
+data$bore[is.na(data$bore)] <- mean(data$bore, na.rm = TRUE)
+
+# Impute missing values for 'price' using regression-based imputation
+if ("price" %in% colnames(data)) {
+  price_model <- lm(price ~ engine.size + horsepower + curb.weight, data = data, na.action = na.exclude)
+  data$price[is.na(data$price)] <- predict(price_model, newdata = data[is.na(data$price), ])
+}
+
+# Impute missing values for 'stroke' using median
+data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
+
+# Impute missing values for 'horsepower' using mean
+data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
+
+# Impute missing values for 'num-of-doors' using mode
+mode_num_of_doors <- names(which.max(table(data$num.of.doors)))
+data$num.of.doors[is.na(data$num.of.doors)] <- mode_num_of_doors
+
+# Impute missing values for 'peak-rpm' using mean
+data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
+
+# Verify that missing values have been handled
+colSums(is.na(data))
+
+```
+
+```{r}
+# Calculate the count of missing values per column
+missing_counts <- colSums(is.na(data))
+
+# Convert to a data frame for plotting
+missing_df <- data.frame(
+  Variable = names(missing_counts),
+  MissingValues = missing_counts
+)
+
+# Filter out columns with zero missing values (optional)
+missing_df <- missing_df %>% filter(MissingValues > 0)
+
+# Plot the distribution of missing values
+ggplot(missing_df, aes(x = reorder(Variable, -MissingValues), y = MissingValues)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Missing Values per Column",
+       x = "Variable",
+       y = "Count of Missing Values") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+
+# Ensure only numeric columns are used
+numeric_data <- data[, sapply(data, is.numeric)]
+
+# Check the structure of the numeric dataset
+str(numeric_data)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot the correlation matrix
+library(corrplot)
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45,
+         title = "Correlation Matrix", addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 1, 0))
+
+
+```
+
+```{r}
+# Convert 'make' to a factor if not already
+data$make <- as.factor(data$make)
+
+# Plot the boxplot
+ggplot(data, aes(x = make, y = price)) +
+  geom_boxplot(fill = "skyblue", color = "black", outlier.color = "red") +
+  labs(title = "Boxplot of Price by Car Make", x = "Car Make", y = "Price") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+
+
+# Define the categorical variables
+categorical_vars <- c("make", "fuel.type", "aspiration", 
+                      "num.of.doors", "body.style", "drive.wheels", 
+                      "engine.location", "engine.type", "num.of.cylinders", 
+                      "fuel.system")
+
+# Ensure all categorical variables are treated as factors
+data <- data %>% mutate(across(all_of(categorical_vars), as.factor))
+
+# Create a long format dataset for faceting
+long_data <- pivot_longer(data, cols = all_of(categorical_vars), 
+                          names_to = "CategoricalVariable", 
+                          values_to = "Category")
+
+# Create the faceted boxplot
+ggplot(long_data, aes(x = Category, y = price)) +
+  geom_boxplot(fill = "skyblue", color = "black", outlier.color = "red") +
+  labs(title = "Price vs Categorical Variables", x = "Category", y = "Price") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 8),  # Rotate and resize labels
+    strip.text = element_text(size = 10)  # Adjust facet label size
+  ) +
+  facet_wrap(~ CategoricalVariable, scales = "free_x", ncol = 3)  # Adjust facet layout
+
+```
+
+```{r}
+# Identify the continuous variables in the dataset
+continuous_vars <- names(data)[sapply(data, is.numeric)]
+
+# Remove the target variable 'price' from the predictors
+continuous_vars <- setdiff(continuous_vars, "price")
+
+# Create a long format dataset for faceting
+long_data <- pivot_longer(data, cols = all_of(continuous_vars),
+                          names_to = "ContinuousVariable",
+                          values_to = "Value")
+
+# Create scatter plots with trend lines for each continuous variable
+ggplot(long_data, aes(x = Value, y = price)) +
+  geom_point(alpha = 0.6, color = "black") +  # Scatter points
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +  # Linear trend line
+  labs(title = "Price vs Continuous Variables", x = "Value", y = "Price") +
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 10),
+    strip.text = element_text(size = 12)
+  ) +
+  facet_wrap(~ ContinuousVariable, scales = "free_x", ncol = 3)  # Grid layout with free x-axis
+```
+
+```{r}
+# Calculate the correlation matrix for numeric variables
+numeric_data <- data[, sapply(data, is.numeric)]
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# View the correlation matrix
+print(cor_matrix)
+```
+```{r}
+# Find highly correlated variable pairs (correlation > 0.85)
+high_corr <- which(abs(cor_matrix) > 0.85 & abs(cor_matrix) < 1, arr.ind = TRUE)
+
+# Display the pairs of highly correlated variables
+high_corr_pairs <- data.frame(
+  Variable1 = rownames(cor_matrix)[high_corr[, 1]],
+  Variable2 = colnames(cor_matrix)[high_corr[, 2]],
+  Correlation = cor_matrix[high_corr]
+)
+print(high_corr_pairs)
+
+```
+
+
+## PCA
+
+```{r}
+# Load necessary library
+library(FactoMineR)
+library(factoextra)
+
+# Step 1: Select numerical variables
+numerical_data <- data[, sapply(data, is.numeric) & names(data) != "price"]
+
+# Scale the numerical variables
+scaled_numerical_data <- scale(numerical_data)
+
+# Step 2: Select all categorical variables as supplementary qualitative variables
+categorical_variables <- data[, c("make", "fuel.type", "aspiration", "num.of.doors", 
+                                     "body.style", "drive.wheels", "engine.location", 
+                                     "engine.type", "num.of.cylinders", "fuel.system")]
+
+# Add the target variable (price) as supplementary quantitative variable
+price_target <- data[, "price"]
+
+# Combine scaled numerical data with categorical variables and target variable
+prepared_data <- cbind(scaled_numerical_data, categorical_variables, price_target)
+
+# Perform PCA with supplementary variables
+pca_result <- PCA(prepared_data, 
+                  quali.sup = which(names(prepared_data) %in% c("make", "fuel.type", "aspiration", 
+                                                           "num.of.doors", "body.style", "drive.wheels", 
+                                                           "engine.location", "engine.type", 
+                                                           "num.of.cylinders", "fuel.system")), 
+                  quanti.sup = which(names(prepared_data) == "price_target"), 
+                  graph = FALSE)
+
+# Summary of PCA
+print(summary(pca_result))
+
+# Visualize PCA results
+# Scree plot
+fviz_screeplot(pca_result, addlabels = TRUE, ylim = c(0, 100))
+
+# PCA biplot
+fviz_pca_biplot(pca_result, 
+                geom.ind = "point", 
+                col.ind = "cos2", 
+                gradient.cols = c("blue", "yellow", "red"), 
+                repel = TRUE)
+
+```
+```{r}
+# Cumulative variance explained
+cumulative_variance <- cumsum(pca_result$eig[, 2])
+barplot(cumulative_variance, 
+        main = "Cumulative Variance Explained", 
+        xlab = "Principal Components", 
+        ylab = "Cumulative Variance (%)", 
+        col = "skyblue", 
+        names.arg = 1:length(cumulative_variance))
+
+# Contributions of numerical variables to each dimension
+contributions <- pca_result$var$contrib
+barplot(contributions[, 1], 
+        main = "Contributions to Dim 1", 
+        xlab = "Variables", 
+        ylab = "Contribution (%)", 
+        col = "lightgreen", 
+        names.arg = rownames(contributions), 
+        las = 2)
+barplot(contributions[, 2], 
+        main = "Contributions to Dim 2", 
+        xlab = "Variables", 
+        ylab = "Contribution (%)", 
+        col = "lightcoral", 
+        names.arg = rownames(contributions), 
+        las = 2)
+
+barplot(contributions[, 3], 
+        main = "Contributions to Dim 3", 
+        xlab = "Variables", 
+        ylab = "Contribution (%)", 
+        col = "gray", 
+        names.arg = rownames(contributions), 
+        las = 2)
+```
+```{r}
+# Analyze the role of supplementary quantitative variable (price)
+# Extract supplementary quantitative variable (price) results
+price_coords <- pca_result$quanti.sup$coord  # Coordinates of 'price' on each dimension
+price_cos2 <- pca_result$quanti.sup$cos2     # Cos² values of 'price' on each dimension
+
+# View coordinates and cos² for price
+print("Coordinates of Price on Each Dimension:")
+print(price_coords)
+
+print("Cos² of Price on Each Dimension:")
+print(price_cos2)
+
+# Interpret the cos² for Dim1 and Dim2
+cat("Dim1 explains", round(price_cos2[1, 1] * 100, 2), "% of the variance in Price\n")
+cat("Dim2 explains", round(price_cos2[1, 2] * 100, 2), "% of the variance in Price\n")
+```
+### PCA Comment
+
+The PCA analysis revealed that the `price` variable aligns strongly with **Dim1**, as indicated by a high cos² value of 70.78% and a coordinate of 0.841. This result highlights that most of the variability in `price` is explained by the variables contributing to Dim1, such as `curb.weight`, `engine.size`, `length`, and `width`. These size- and weight-related attributes are key determinants of car pricing, emphasizing the importance of physical characteristics and engine capacity in influencing the market value of vehicles. Conversely, the weak coordinate value of -0.113 for Dim2, which is driven by variables like `compression.ratio` and `horsepower`, explains only 1.28% of the variance in `price`, indicating a much smaller impact of performance-related metrics. Similarly, higher dimensions (Dim3, Dim4, Dim5) show small coordinates and negligible cos² contributions, suggesting that they capture variance unrelated to `price`. These findings underscore the dominance of size and weight attributes over performance and efficiency variables in determining car prices, providing actionable insights for predictive modeling and market analysis.
+
+## MCA
+
+```{r}
+# Multidimensional Scaling Analysis
+# Compute the Euclidean distance matrix
+dist_matrix <- dist(scaled_numerical_data)
+
+# Apply MDS with Euclidean distance
+mds_result_euclidean <- cmdscale(dist_matrix, eig = TRUE)
+
+# Check the MDS result
+mds_points_euclidean <- mds_result_euclidean$points
+
+# Plot the MDS points with labels (e.g., "make")
+plot(mds_points_euclidean[, 1], mds_points_euclidean[, 2],
+     xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main = "MDS with Euclidean Distance", type = "n")
+text(mds_points_euclidean[, 1], mds_points_euclidean[, 2],
+     labels = data$make, cex = 0.7, pos = 4)
+
+# Apply MDS with Manhattan distance
+manhattan_dist_matrix <- dist(scaled_numerical_data, method = "manhattan")
+mds_result_manhattan <- cmdscale(manhattan_dist_matrix, eig = TRUE)
+
+# Check the MDS result with Manhattan distance
+mds_points_manhattan <- mds_result_manhattan$points
+
+# Plot the MDS points with Manhattan distance
+plot(mds_points_manhattan[, 1], mds_points_manhattan[, 2],
+     xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main = "MDS with Manhattan Distance", type = "n")
+text(mds_points_manhattan[, 1], mds_points_manhattan[, 2],
+     labels = data$make, cex = 0.7, pos = 4)
+```
+```{r}
+# Create plots for each categorical variable
+for (cat_var in categorical_vars) {
+  plot(mds_points_euclidean[, 1], mds_points_euclidean[, 2], 
+       xlab = "Coordinate 1", ylab = "Coordinate 2", 
+       main = paste("MDS with Euclidean Distance - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+```
+```{r}
+# Create plots for each categorical variable with Manhattan distance
+for (cat_var in categorical_vars) {
+  plot(mds_points_manhattan[, 1], mds_points_manhattan[, 2], 
+       xlab = "Coordinate 1", ylab = "Coordinate 2", 
+       main = paste("MDS with Manhattan Distance - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+
+```
+
+```{r}
+# PCA Analysis
+# Extract PCA coordinates for individuals
+pca_coordinates <- pca_result$ind$coord
+
+# Create PCA plots for each categorical variable
+for (cat_var in categorical_vars) {
+  plot(pca_coordinates[, 1], pca_coordinates[, 2], 
+       xlab = "PCA Dimension 1", ylab = "PCA Dimension 2", 
+       main = paste("PCA - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+
+```
+## MCA
+
+```{r}
+# Multiple Correspondence Analysis (MCA)
+# Load necessary libraries
+library(FactoMineR)
+library(factoextra)
+
+# Select only categorical variables for MCA
+categorical_data <- data[, c("make", "fuel.type", "aspiration", "num.of.doors", 
+                             "body.style", "drive.wheels", "engine.location", 
+                             "engine.type", "num.of.cylinders", "fuel.system")]
+
+# Perform MCA
+mca_result <- MCA(categorical_data, graph = FALSE)
+
+# Summary of MCA results
+print(summary(mca_result))
+
+# Scree plot to visualize the eigenvalues
+fviz_screeplot(mca_result, addlabels = TRUE, ylim = c(0, 100), 
+               title = "Scree Plot - MCA")
+
+# Plot the individuals in the MCA space
+fviz_mca_ind(mca_result, 
+             geom.ind = "point", 
+             col.ind = "cos2", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Individuals in MCA Space")
+
+# Plot the variables in the MCA space
+fviz_mca_var(mca_result, 
+             col.var = "cos2", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Variables in MCA Space")
+
+# Biplot of individuals and variables
+fviz_mca_biplot(mca_result, 
+                repel = TRUE, 
+                geom = c("point", "text"), 
+                title = "MCA Biplot")
+
+```
+
+```{r}
+# Plot the individuals in the MCA space
+fviz_mca_ind(mca_result, 
+             geom.ind = "point", 
+             col.ind = "cos2", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Individuals in MCA Space")
+
+# Plot the variables in the MCA space
+fviz_mca_var(mca_result, 
+             choice = "var", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Variables in MCA Space")
+
+# Biplot of individuals and variables
+fviz_mca_biplot(mca_result, 
+                repel = TRUE, 
+                geom = c("point", "text"), 
+                title = "MCA Biplot")
+
+```
+```{r}
+
+# Multiple Correspondence Analysis (MCA)
+
+# Load necessary libraries
+library(FactoMineR)
+library(factoextra)
+
+# Step 1: Prepare Data
+cat("Selecting categorical variables for MCA\n")
+categorical_data <- data[, c("make", "fuel.type", "aspiration", "num.of.doors", 
+                             "body.style", "drive.wheels", "engine.location", 
+                             "engine.type", "num.of.cylinders", "fuel.system")]
+
+# Step 2: Perform MCA
+cat("Performing MCA on selected categorical data\n")
+mca_result <- MCA(categorical_data, graph = FALSE, ncp=2)
+
+# Step 3: Visualize Results
+
+# Scree Plot
+cat("Generating scree plot\n")
+fviz_screeplot(mca_result, addlabels = TRUE, ylim = c(0, 100), 
+               title = "Scree Plot - MCA")
+
+# Variables Plot
+cat("Plotting variables in MCA space\n")
+fviz_mca_var(mca_result, 
+             col.var = "cos2", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Variables in MCA Space")
+
+# Biplot of Individuals and Variables
+cat("Generating biplot of individuals and variables\n")
+fviz_mca_biplot(mca_result, 
+                repel = TRUE, 
+                geom = c("point", "text"), 
+                title = "MCA Biplot")
+
+# Step 4: Analyze Dimensions
+cat("Describing dimensions\n")
+dimensions_description <- dimdesc(mca_result, axes = 1:2)
+print(dimensions_description)
+
+# Step 5: Perform Hierarchical Clustering on Principal Components (HCPC)
+cat("Performing hierarchical clustering on MCA results\n")
+res_hcpc <- HCPC(mca_result, graph = FALSE)
+
+# View the structure of the clustering results
+cat("Viewing structure of clustering results\n")
+print(names(res_hcpc))
+
+# View the data with cluster assignments
+cat("Viewing data with cluster assignments\n")
+print(head(res_hcpc$data.clust))  # Includes the cluster assignments
+
+# Dendrogram
+cat("Generating dendrogram\n")
+fviz_dend(res_hcpc, rect = TRUE, rect_fill = TRUE, main = "Dendrogram of Clusters")
+
+# 3D Plot of Clusters
+cat("Generating 3D plot of clusters\n")
+plot(res_hcpc, choice = "3D.map")
+
+# 2D Factor Map Visualization with Clusters
+cat("Generating 2D factor map with clusters\n")
+fviz_cluster(res_hcpc, repel = TRUE, show.clust.cent = TRUE, main = "Factor Map with Clusters")
+
+# 2D Factor Map Visualization with Clusters (dots only, no labels)
+cat("Generating 2D factor map without labels\n")
+fviz_cluster(res_hcpc, 
+             repel = TRUE, 
+             show.clust.cent = TRUE, 
+             main = "", 
+             labelsize = 0, 
+             grid = FALSE)
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
