@@ -14,12 +14,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
-install.packages("vegan")
+# install.packages("vegan")
 
 # Load libraries
 library(ggplot2)
 library(dplyr)
-
 library(tidyr)
 
 ```
@@ -126,17 +125,8 @@ head(data)
     -   Meaning: Market price of the car.
     -   Values: Continuous, ranging from \$5,118 to \$45,400.
 
+## Data Cleaning, Basic Statistics (Boxplot), Dealing with NA
 ```{r}
-# Load necessary libraries
-library(ggplot2)
-library(dplyr)
-
-# Load the dataset
-#data <- read.csv("path_to_your_file/Automobile_data.csv", stringsAsFactors = FALSE)
-
-# Replace "?" with NA for better handling of missing values
-data[data == "?"] <- NA
-
 # Convert numerical variables to numeric type
 numerical_vars <- c("symboling", "normalized.losses", "wheel.base", "engine.size", 
                     "bore", "stroke", "compression.ratio", "horsepower", 
@@ -169,6 +159,7 @@ for (var in numerical_vars) {
 }
 ```
 
+### Dealing with NA
 ```{r}
 # Replace "?" with NA for better handling of missing values
 data[data == "?"] <- NA
@@ -189,10 +180,6 @@ ggplot(missing_data, aes(x = reorder(Variable, -MissingCount), y = MissingCount)
 ```
 
 ```{r}
-
-# Replace "?" with NA for better handling of missing values
-data[data == "?"] <- NA
-
 # Identify categorical variables
 categorical_vars <- data %>% select_if(is.character)
 
@@ -210,7 +197,7 @@ ggplot(categorical_long, aes(x = Value, fill = Variable)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "none")
 ```
-
+### Drop normalized-losses
 ```{r}
 # Drop the 'normalized-losses' column
 data <- data %>% select(-`normalized.losses`)
@@ -239,6 +226,7 @@ ggplot(missing_df, aes(x = reorder(Variable, -MissingValues), y = MissingValues)
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+### Use mean and median to replace other NA values
 ```{r}
 # Impute missing values for 'bore' using mean
 data$bore[is.na(data$bore)] <- mean(data$bore, na.rm = TRUE)
@@ -267,28 +255,6 @@ colSums(is.na(data))
 
 ```
 
-```{r}
-# Calculate the count of missing values per column
-missing_counts <- colSums(is.na(data))
-
-# Convert to a data frame for plotting
-missing_df <- data.frame(
-  Variable = names(missing_counts),
-  MissingValues = missing_counts
-)
-
-# Filter out columns with zero missing values (optional)
-missing_df <- missing_df %>% filter(MissingValues > 0)
-
-# Plot the distribution of missing values
-ggplot(missing_df, aes(x = reorder(Variable, -MissingValues), y = MissingValues)) +
-  geom_bar(stat = "identity", fill = "blue") +
-  labs(title = "Missing Values per Column",
-       x = "Variable",
-       y = "Count of Missing Values") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
 
 ```{r}
 
@@ -309,6 +275,7 @@ corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt 
 
 ```
 
+### Categorial Data to factor
 ```{r}
 # Convert 'make' to a factor if not already
 data$make <- as.factor(data$make)
@@ -374,7 +341,7 @@ ggplot(long_data, aes(x = Value, y = price)) +
   ) +
   facet_wrap(~ ContinuousVariable, scales = "free_x", ncol = 3)  # Grid layout with free x-axis
 ```
-
+## Correlation between Variables
 ```{r}
 # Calculate the correlation matrix for numeric variables
 numeric_data <- data[, sapply(data, is.numeric)]
@@ -399,6 +366,18 @@ print(high_corr_pairs)
 
 
 ## PCA
+- Dropping stroke:
+  - extremely low correlation with
+  - pca on full data sets does lead to sufficient results
+  
+  
+- another analysis:
+  - drop length (high correlation with curb.weight:0.88)
+  - drop width (high correlation with curb.weight:0.87)
+    additional: high correlation with length
+  - optional: drop engine.size (high correlation with curb.weight:0.85)
+    but lower correlation with length and width
+  - drop highway.mpg (high correlation with city.mpg:0.97)
 
 ```{r}
 # Load necessary library
@@ -406,7 +385,10 @@ library(FactoMineR)
 library(factoextra)
 
 # Step 1: Select numerical variables
-numerical_data <- data[, sapply(data, is.numeric) & names(data) != "price"]
+numerical_data <- data[, sapply(data, is.numeric) & names(data) != "price" & names(data) != "stroke"]
+
+# excluding_pca_cols <- c("price", "stroke", "width", "length", "highway.mpg")
+# numerical_data <- data[, sapply(data, is.numeric) & !(names(data) %in% excluding_pca_cols)]
 
 # Scale the numerical variables
 scaled_numerical_data <- scale(numerical_data)
@@ -446,6 +428,14 @@ fviz_pca_biplot(pca_result,
                 repel = TRUE)
 
 ```
+##### analysis (excluding ("stroke"))
+Kaiser: take first 2 Dims. (6.656   2.306   0.952)
+Cumulative of var: take at least Dims until 80% => at least 3 (55.468  74.682  82.617) 
+
+#### Second analysis (excluding ("stroke", "price", "stroke", "width", "length", "highway.mpg"))
+4.359   2.112   0.892
+48.435  71.906  81.815
+
 ```{r}
 # Cumulative variance explained
 cumulative_variance <- cumsum(pca_result$eig[, 2])
@@ -490,17 +480,25 @@ price_cos2 <- pca_result$quanti.sup$cos2     # Cos² values of 'price' on each d
 # View coordinates and cos² for price
 print("Coordinates of Price on Each Dimension:")
 print(price_coords)
-
+cat("\n")
 print("Cos² of Price on Each Dimension:")
 print(price_cos2)
 
 # Interpret the cos² for Dim1 and Dim2
 cat("Dim1 explains", round(price_cos2[1, 1] * 100, 2), "% of the variance in Price\n")
 cat("Dim2 explains", round(price_cos2[1, 2] * 100, 2), "% of the variance in Price\n")
+cat("Dim2 explains", round(price_cos2[1, 3] * 100, 2), "% of the variance in Price\n")
 ```
 ### PCA Comment
+- when dropping "stroke" engine_size and price have are very similar representation in 2D.
+- high contribution of variables that are related with the size of the car (e.g. engine_size, width, height, etc.)
+- text below holds
 
+#### Text based on old PCA (including stroke)
 The PCA analysis revealed that the `price` variable aligns strongly with **Dim1**, as indicated by a high cos² value of 70.78% and a coordinate of 0.841. This result highlights that most of the variability in `price` is explained by the variables contributing to Dim1, such as `curb.weight`, `engine.size`, `length`, and `width`. These size- and weight-related attributes are key determinants of car pricing, emphasizing the importance of physical characteristics and engine capacity in influencing the market value of vehicles. Conversely, the weak coordinate value of -0.113 for Dim2, which is driven by variables like `compression.ratio` and `horsepower`, explains only 1.28% of the variance in `price`, indicating a much smaller impact of performance-related metrics. Similarly, higher dimensions (Dim3, Dim4, Dim5) show small coordinates and negligible cos² contributions, suggesting that they capture variance unrelated to `price`. These findings underscore the dominance of size and weight attributes over performance and efficiency variables in determining car prices, providing actionable insights for predictive modeling and market analysis.
+
+### Price of Individuals based on PCA
+
 
 ## MCA
 
