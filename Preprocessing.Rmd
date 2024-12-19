@@ -1,0 +1,64 @@
+
+# Preprocessing
+```{r}
+full.data <- read.csv("./cleaned_data.csv", header = TRUE, sep = ",")
+df <- full.data
+
+############################
+## drop compression rate
+############################
+df <- subset(df, select = -c(compression.ratio))
+
+############################
+## drop stroke
+############################
+df <- subset(df, select = -c(stroke))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$area <- df$width * df$length
+
+df <- subset(df, select = -c(width, length))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$mpg <- rowMeans(df[, c("city.mpg", "highway.mpg")], na.rm = TRUE)
+
+df <- df[, !colnames(df) %in% c("city.mpg", "highway.mpg")]
+
+############################
+## drop insurance  data
+############################
+df <- subset(df, select = -c(normalized.losses, symboling))
+
+
+categorial_vars.all <- c("make", "symboling", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system")
+
+for (cat_var in categorial_vars.all) {
+  if (cat_var %in% colnames(df)) {
+    df[[cat_var]] <- as.factor(df[[cat_var]])
+  }
+}
+
+
+numerical_vars.all <- c("normalized.losses", "wheel.base", "length", "width", "height",
+                        "area", "crub.weight", "engine.size", "bore", "stroke",
+                        "horsepower", "peak.rpm", "city.mpg", "highway.mpg", "mpg", "price")
+
+for (num_var in numerical_vars.all) {
+  if (num_var %in% colnames(df)) {
+    df[[num_var]] <- as.numeric(as.character(df[[num_var]]))
+  }
+}
+
+
+str(df)
+```

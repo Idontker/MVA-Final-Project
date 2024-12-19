@@ -1,0 +1,130 @@
+# Data Cleaning
+
+## Load Data
+
+```{r}
+# Load the dataset
+data <- read.csv("./Automobile_data.csv", header = TRUE, sep = ",")
+# Summary statistics
+summary(data)
+
+# Check for missing values
+colSums(is.na(data))
+
+# Quick look at the data
+head(data)
+
+```
+## Numerical and Categorial Types
+```{r}
+# Convert numerical variables to numeric type
+numerical_vars <- c("symboling", "normalized.losses", "wheel.base", "engine.size", 
+                    "bore", "stroke", "compression.ratio", "horsepower", 
+                    "peak.rpm", "city.mpg", "highway.mpg", "price")
+
+data[numerical_vars] <- lapply(data[numerical_vars], as.numeric)
+
+# TODO clean categorial
+```
+
+
+## Histogram of numerical variables
+```{r}
+
+# Create histograms for all numerical variables
+for (var in numerical_vars) {
+  if (!is.null(data[[var]]) && is.numeric(data[[var]])) {
+    ggplot(data, aes_string(x = var)) +
+      geom_histogram(bins=15, fill = "blue", color = "black", alpha = 0.7) +
+      labs(title = paste("Distribution of", var), x = var, y = "Frequency") +
+      theme_minimal() -> plot
+    print(plot)
+  }
+}
+```
+## Boxplot of numerical variables
+```{r}
+# Create individual box plots for numerical variables
+for (var in numerical_vars) {
+  if (!is.null(data[[var]]) && is.numeric(data[[var]])) {
+    ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "blue", color = "black", alpha = 0.7, outlier.color = "red") +
+      labs(title = paste("Box Plot of", var), x = "", y = var) +
+      theme_minimal() -> plot
+    print(plot)
+  }
+}
+```
+
+## Dealing with NA
+```{r}
+# Replace "?" with NA for better handling of missing values
+data[data == "?"] <- NA
+
+# Calculate the number of missing values per column
+missing_values <- sapply(data, function(x) sum(is.na(x)))
+missing_data <- data.frame(Variable = names(missing_values), MissingCount = missing_values)
+print(missing_values)
+
+# Filter to include only columns with missing values
+missing_data <- missing_data[missing_data$MissingCount > 0, ]
+
+# Plot the missing values
+ggplot(missing_data, aes(x = reorder(Variable, -MissingCount), y = MissingCount)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Missing Values per Column", x = "Variable", y = "Count of Missing Values") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Identify categorical variables
+categorical_vars <- data %>% select_if(is.character)
+
+# Convert to long format for faceted plotting
+categorical_long <- categorical_vars %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value")
+
+# Plot faceted bar plots
+ggplot(categorical_long, aes(x = Value, fill = Variable)) +
+  geom_bar() +
+  facet_wrap(~ Variable, scales = "free", ncol = 3) +
+  labs(title = "Distribution of Categorical Variables",
+       x = "Category", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+## Use mean and median to replace NA (except normalized.losses)
+```{r}
+# Impute missing values for 'bore' using mean
+data$bore[is.na(data$bore)] <- mean(data$bore, na.rm = TRUE)
+
+# Impute missing values for 'price' using regression-based imputation
+if ("price" %in% colnames(data)) {
+  price_model <- lm(price ~ engine.size + horsepower + curb.weight, data = data, na.action = na.exclude)
+  data$price[is.na(data$price)] <- predict(price_model, newdata = data[is.na(data$price), ])
+}
+
+# Impute missing values for 'stroke' using median
+data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
+
+# Impute missing values for 'horsepower' using mean
+data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
+
+# Impute missing values for 'num-of-doors' using mode
+mode_num_of_doors <- names(which.max(table(data$num.of.doors)))
+data$num.of.doors[is.na(data$num.of.doors)] <- mode_num_of_doors
+
+# Impute missing values for 'peak-rpm' using mean
+data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
+
+# Verify that missing values have been handled
+colSums(is.na(data))
+```
+```{r}
+write.csv(data, file = "./cleaned_data.csv", row.names = FALSE, header=TRUE, sep=",")
+```
+
+ 
