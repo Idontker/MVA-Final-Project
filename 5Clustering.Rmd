@@ -59,10 +59,93 @@ for (num_var in numerical_vars.all) {
   }
 }
 
-
-str(df)
-
 # Summary statistics
 summary(df)
 
+# Check for missing values
+colSums(is.na(df))
+
 ```
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(NbClust)
+
+```
+
+
+## HCPC
+```{r}
+numeric_df <- df[, sapply(df, is.numeric) & names(df) != "price"]
+
+# Perform PCA on numeric variables
+res.pca <- PCA(numeric_df, ncp = 2, graph = FALSE)
+
+res.hcpc <- HCPC(res.pca, graph = FALSE)
+
+# Dendrogram using fviz_dend
+fviz_dend(res_hcpc.hcpc, rect = TRUE, rect_fill = TRUE, main="")
+
+## 3D plot ##
+plot(res.hcpc, choice = "3D.map")
+
+# Visualization of Clusters
+fviz_cluster(res.hcpc,
+             geom = "point",
+             repel = FALSE, 
+             show.clust.cent = TRUE, 
+             main = "")  # Exclude text labels
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

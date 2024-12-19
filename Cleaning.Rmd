@@ -124,7 +124,7 @@ data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
 colSums(is.na(data))
 ```
 ```{r}
-write.csv(data, file = "./cleaned_data.csv", row.names = FALSE, header=TRUE, sep=",")
+write.csv(data, file = "./cleaned_data.csv", row.names = FALSE)
 ```
 
  
