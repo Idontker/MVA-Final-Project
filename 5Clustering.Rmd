@@ -35,7 +35,8 @@ df <- df[, !colnames(df) %in% c("city.mpg", "highway.mpg")]
 ############################
 ## drop insurance  data
 ############################
-df <- subset(df, select = -c(normalized.losses, symboling))
+# df <- subset(df, select = -c(normalized.losses, symboling))
+df <- subset(df, select = -c(normalized.losses))
 
 
 categorial_vars.all <- c("make", "symboling", "fuel.type", "aspiration",
@@ -71,13 +72,23 @@ colSums(is.na(df))
 library(FactoMineR)
 library(factoextra)
 library(NbClust)
+library(mclust)
+library(ggplot2)
+library(cluster)
+library(gridExtra)
+
+
+
+numeric_df <- df[, sapply(df, is.numeric) & names(df) != "price"]
+str(numeric_df)
+scaled_numeric_df <- scale(numeric_df)
 
 ```
 
 
 ## HCPC
 ```{r}
-numeric_df <- df[, sapply(df, is.numeric) & names(df) != "price"]
+
 
 # Perform PCA on numeric variables
 res.pca <- PCA(numeric_df, ncp = 2, graph = FALSE)
@@ -85,10 +96,10 @@ res.pca <- PCA(numeric_df, ncp = 2, graph = FALSE)
 res.hcpc <- HCPC(res.pca, graph = FALSE)
 
 # Dendrogram using fviz_dend
-fviz_dend(res_hcpc.hcpc, rect = TRUE, rect_fill = TRUE, main="")
+fviz_dend(res.hcpc, rect = TRUE, rect_fill = TRUE, main="")
 
 ## 3D plot ##
-plot(res.hcpc, choice = "3D.map")
+# plot(res.hcpc, choice = "3D.map")
 
 # Visualization of Clusters
 fviz_cluster(res.hcpc,
@@ -96,32 +107,549 @@ fviz_cluster(res.hcpc,
              repel = FALSE, 
              show.clust.cent = TRUE, 
              main = "")  # Exclude text labels
+
+```
+
+```{r}
+df$cluster <- res.hcpc$data.clust$clust
+
+# Boxplot
+
+boxplot_price <- ggplot(df, aes(x = factor(cluster), y = price, fill = cluster)) +
+  geom_boxplot() +
+  labs(title = "", x = "Cluster", y = "Price") +
+  theme_minimal()
+
+# Violin plot
+violin_plot_price <- ggplot(df, aes(x = factor(cluster), y = price, fill = cluster)) +
+  geom_violin() +
+  labs(title = "", x = "Cluster", y = "Price") +
+  theme_minimal()
+print(boxplot_price)
+print(violin_plot_price)
+```
+
+
+##  Hierarchical Clusters 
+```{r}
+# Transpose the data frame to compute distances between variables
+# transposed_df <- t(scaled_numeric_df)
+
+d <- dist(scaled_numeric_df)
+dist_matrix_df <- as.data.frame(as.table(as.matrix(d)))
+
+# Create a heatmap
+ggplot(dist_matrix_df, aes(Var1, Var2, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue") +
+  labs(title = "Distance Between Points", x = "Observation", y = "Observation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+methods <- c("single", "complete", "average", "ward.D2", "centroid")
+```
+
+```{r}
+# Initialize an empty list to store results
+res_euclide.fit <- list()
+
+# Loop through the methods and perform hierarchical clustering
+for (method in methods) {
+  # Compute hierarchical clustering
+  fit <- hclust(d, method = method)
+  
+  # Add the clustering result to the list with the method name
+  res_euclide.fit[[method]] <- fit
+  
+  # Plot the dendrogram
+  plot(fit, main = paste("Dendrogram of", method, "Linkage"), xlab = "", sub = "")
+}
+ 
+```
+
+
+
+### Ellbow selection of clusters
+this was not helpful to devide the clusters
+```{r}
+for (method in names(res_euclide.fit)) {
+  fit <- res_euclide.fit[[method]]  # Extract the hclust object
+  
+  # Plot the Elbow Method for the current fit
+  plot(fit$height, 
+       type = "b", 
+       main = paste("Elbow Method for", method, "Linkage"), 
+       # main ="",
+       xlab = "Number of Clusters", 
+       ylab = "Height")
+}
+
+```
+#### NbClust
+```{r}
+library(NbClust)
+
+# Determine the number of clusters
+methods <- c("single", "complete", "average", "ward.D2", "centroid")
+for (meth in methods) {
+  nb <- NbClust(scaled_numeric_df, distance = "euclidean", min.nc = 2, max.nc = 10, method = meth)
+  
+}
+
+```
+
+```{r}
+ks <- c(2, 2, 5, 2, 2)  # Number of clusters for each method
+
+res_euclide.clusters <- list()
+
+for (i in 1:length(methods)) {
+  method <- methods[i]  # Get the current method
+  fit <- res_euclide.fit[[method]]  # Retrieve the hclust object
+  res_euclide.clusters[[method]] <- cutree(fit, k = ks[i])  # Cut the tree
+}
+
+```
+
+```{r}
+cluster_summaries <- list()
+
+# Loop through clustering results
+for (method in names(res_euclide.clusters)) {
+  clusters <- res_euclide.clusters[[method]]  # Get cluster assignments
+  
+  # Add cluster assignments to the data
+  df$cluster <- clusters
+  
+  # Summarize price statistics by cluster
+  cluster_summary <- aggregate(price ~ cluster, data = df, 
+                                FUN = function(x) c(mean = mean(x), median = median(x), sd = sd(x), n = length(x)))
+  
+  # Store the summary in the list
+  cluster_summaries[[method]] <- cluster_summary
+  print(cluster_summary)
+
+}
+
+```
+### viz (Scatter and Boxplots)
+```{r}
+
+pca_coords <- as.data.frame(res.pca$ind$coord)
+
+for (method in names(res_euclide.clusters)) {
+  # Get cluster assignments
+  clusters <- res_euclide.clusters[[method]]
+  
+  # Add cluster assignments to the data
+  df$cluster <- as.factor(clusters)
+  
+  # Create a boxplot of price by cluster
+  p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+    geom_boxplot() +
+    labs(title = paste("Price Distribution by Clusters (Method:", method, ")"),
+         x = "Cluster", y = "Price") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Print the plot explicitly
+  print(p)
+  pca_coords[[method]] <- as.factor(clusters)  # Store clusters for each method
+  
+  p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = pca_coords[[method]])) +
+    geom_point(size = 3, alpha = 0.7) +
+    labs(title = paste("Clusters Visualized on PCA Dimensions (Method:", method, ")"),
+         x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+    theme_minimal()
+    
+  # Print the plot explicitly
+  print(p)
+  
+    # Create a bar plot for cluster sizes
+  cluster_sizes <- as.data.frame(table(clusters))
+  print(cluster_sizes)
+  
+  colnames(cluster_sizes) <- c("Cluster", "Count")
+  
+  p <- ggplot(cluster_sizes, aes(x = Cluster, y = Count, fill = Cluster)) +
+    geom_bar(stat = "identity") +
+    labs(title = paste("Cluster Sizes (Method:", method, ")"),
+         x = "Cluster", y = "Count") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Print the bar plot
+  print(p)
+}
+
+######### Clustering of hc clustering
+
+# Extract HCPC cluster assignments
+df$cluster <- as.factor(res.hcpc$data.clust$clust)
+
+# Boxplot of price by cluster
+p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+  geom_boxplot() +
+  labs(title = "Price Distribution by Clusters (HCPC Method)",
+       x = "Cluster", y = "Price") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+# Add HCPC clusters to PCA coordinates
+pca_coords$HCPC_cluster <- as.factor(res.hcpc$data.clust$clust)
+
+# Scatter plot of clusters on PCA dimensions
+p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = HCPC_cluster)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "Clusters Visualized on PCA Dimensions (HCPC Method)",
+       x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+  theme_minimal()
+print(p)
+
+# Bar plot of cluster sizes
+cluster_sizes <- as.data.frame(table(res.hcpc$data.clust$clust))
+colnames(cluster_sizes) <- c("Cluster", "Count")
+
+p <- ggplot(cluster_sizes, aes(x = Cluster, y = Count, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Cluster Sizes (HCPC Method)",
+       x = "Cluster", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+
+
+```
+### Plots without title for report
+```{r}
+for (method in c("average", "ward.D2")){
+  clusters <- res_euclide.clusters[[method]]
+  
+  # Add cluster assignments to the data
+  df$cluster <- as.factor(clusters)
+  
+  # Create a boxplot of price by cluster
+  p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+    geom_boxplot() +
+    labs(title = "",
+         x = "Cluster", y = "Price") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Print the plot explicitly
+  print(p)
+  pca_coords[[method]] <- as.factor(clusters)  # Store clusters for each method
+  
+  p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = pca_coords[[method]])) +
+    geom_point(size = 3, alpha = 0.7) +
+    labs(title = "",
+         x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+    theme_minimal()
+    
+  # Print the plot explicitly
+  print(p)
+}
+
+```
+
+
+## K means
+
+```{r}
+head(df)
 ```
 
 
 ```{r}
+# Perform k-means clustering
+set.seed(123) # For reproducibility
+kmeans_result <- kmeans(scaled_numeric_df, centers = 3 , nstart = 25)
+
+# Add cluster assignments to the original dataframe
+df$cluster <- as.factor(kmeans_result$cluster)
+
+
+cluster_sizes <- as.data.frame(table(kmeans_result$cluster))
+print(cluster_sizes)
 ```
 
 
 ```{r}
+# Bar plot of cluster sizes
+cluster_sizes <- as.data.frame(table(df$cluster))
+colnames(cluster_sizes) <- c("Cluster", "Count")
+
+p <- ggplot(cluster_sizes, aes(x = Cluster, y = Count, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  labs(title = "",
+       x = "Cluster", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+# Boxplot of price by cluster
+p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Cluster", y = "Price") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+# Add cluster assignments to PCA coordinates
+pca_coords$kmeans <- df$cluster
+
+# Scatter plot of clusters on PCA dimensions
+p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = kmeans)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "",
+       x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+  theme_minimal()
+print(p)
+
+  
+
 ```
 
 
 ```{r}
+# Save clusters 
+
+df$kmeans <- as.factor(kmeans_result$cluster)
+df$hcpc <- as.factor(res.hcpc$data.clust$clust)
+
+clusters <- res_euclide.clusters[["complete"]]
+# Add cluster assignments to the data
+df$hc.complete <- as.factor(clusters)
+
+clusters <- res_euclide.clusters[["average"]]
+# Add cluster assignments to the data
+df$hc.avg <- as.factor(clusters)
+
+clusters <- res_euclide.clusters[["ward.D2"]]
+# Add cluster assignments to the data
+df$hc.ward.D2 <- as.factor(clusters)
+```
+
+```{r}
+str(df)
+write.csv(df, file = "./clustered_data.csv", row.names = FALSE)
+```
+
+
+
+## Cluster Evaluation
+### Sillouette
+```{r}
+
+# List of cluster variables
+cluster_vars <- c("kmeans", "hcpc", "hc.complete", "hc.avg", "hc.ward.D2")
+
+# Initialize a data frame to store silhouette scores
+silhouette_results <- data.frame(Cluster_Method = character(), Silhouette_Score = numeric())
+
+# Compute silhouette scores for each clustering method
+for (cluster_var in cluster_vars) {
+  # Calculate silhouette scores
+  silhouette_scores <- silhouette(as.numeric(df[[cluster_var]]), dist(scaled_numeric_df))
+  
+  # Compute the mean silhouette score
+  avg_silhouette <- mean(silhouette_scores[, "sil_width"])
+  
+  # Store the result
+  silhouette_results <- rbind(silhouette_results, data.frame(
+    Cluster_Method = cluster_var,
+    Silhouette_Score = avg_silhouette
+  ))
+}
+
+# Bar plot of silhouette scores
+p <- ggplot(silhouette_results, aes(x = Cluster_Method, y = Silhouette_Score, fill = Cluster_Method)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Silhouette Scores for Different Clustering Methods",
+       x = "Clustering Method", y = "Average Silhouette Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+print(silhouette_results)
+
+```
+
+```{r}
+
+# List of cluster variables
+cluster_vars <- c("kmeans", "hcpc", "hc.complete", "hc.avg", "hc.ward.D2")
+
+# Initialize a data frame to store ARI scores
+ari_results <- data.frame(Cluster_Method = character(), ARI_Score = numeric())
+
+# Compute ARI for each clustering method
+for (cluster_var in cluster_vars) {
+  # Calculate ARI
+  ari_score <- adjustedRandIndex(df[[cluster_var]], df$symboling)
+  
+  # Store the result
+  ari_results <- rbind(ari_results, data.frame(
+    Cluster_Method = cluster_var,
+    ARI_Score = ari_score
+  ))
+}
+
+# Bar plot of ARI scores
+p <- ggplot(ari_results, aes(x = Cluster_Method, y = ARI_Score, fill = Cluster_Method)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Adjusted Rand Index (ARI) for Different Clustering Methods",
+       x = "Clustering Method", y = "ARI Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+print(ari_results)
+```
+
+### Chi Squared test of independence for price
+```{r}
+# Create an empty data frame to store the results
+chi_square_results <- data.frame(
+  Clustering_Method = character(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# List of clustering methods
+clustering_methods <- c("kmeans", "hcpc", "hc.complete", "hc.avg", "hc.ward.D2")
+
+# Perform Chi-Square Test of Independence for each clustering method
+for (method in clustering_methods) {
+  # Perform Chi-Square test between price category and cluster assignment
+  chi_result <- chisq.test(table(df$price, df[[method]]))
+  
+  # Store the results in the dataframe
+  chi_square_results <- rbind(chi_square_results, 
+                              data.frame(Clustering_Method = method, P_Value = chi_result$p.value))
+}
+
+# Print the table of p-values
+print(chi_square_results)
+
+```
+
+### Kruskal Wallis test
+
+```{r}
+# Create an empty data frame to store the results
+kruskal_results <- data.frame(
+  Clustering_Method = character(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Perform Kruskal-Wallis Test for each clustering method
+for (method in clustering_methods) {
+  # Perform Kruskal-Wallis test between price and cluster assignment
+  kruskal_result <- kruskal.test(price ~ df[[method]], data = df)
+  
+  # Store the results in the dataframe
+  kruskal_results <- rbind(kruskal_results, 
+                           data.frame(Clustering_Method = method, P_Value = kruskal_result$p.value))
+}
+
+# Print the table of p-values
+print(kruskal_results)
+
+
+```
+
+
+## Symboling Cluster Analysis
+
+```{r}
+cluster_vars <- c("kmeans", "hcpc", "hc.complete", "hc.avg", "hc.ward.D2")
+
+# Visualize contingency matrices as bar plots
+for (cluster_var in cluster_vars) {
+  # Create a data frame for plotting
+  contingency_table <- table(Cluster = df[[cluster_var]], Symboling = df$symboling)
+
+  contingency_df <- as.data.frame(table(Cluster = df[[cluster_var]], Symboling = df$symboling))
+  
+  # Bar plot
+  p <- ggplot(contingency_df, aes(x = Symboling, y = Freq, fill = Cluster)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(title = paste("Contingency Visualization:", cluster_var),
+         x = "Symboling", y = "Frequency", fill = "Cluster") +
+    theme_minimal()
+  
+    # Heatmap
+  p <- ggplot(contingency_df, aes(x = Symboling, y = Cluster, fill = Freq)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = paste("Contingency Heatmap:", cluster_var),
+         x = "Symboling", y = "Cluster", fill = "Frequency") +
+    theme_minimal()
+  
+  # Compute relative frequencies (row-wise proportions)
+  relative_table <- prop.table(contingency_table, margin = 1)
+  
+  # Convert to a data frame for plotting
+  relative_df <- as.data.frame(as.table(relative_table))
+  
+  
+    # Heatmap
+  p <- ggplot(relative_df, aes(x = Symboling, y = Cluster, fill = Freq)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = paste("Contingency Heatmap:", cluster_var),
+         x = "Symboling", y = "Cluster", fill = "Frequency") +
+    theme_minimal()
+
+  
+  # Print the plot
+  print(p)
+  
+  
+# Boxplot of price by cluster
+p <- ggplot(df, aes(x = get(cluster_var), y = price, fill = get(cluster_var))) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Cluster", y = "Price") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+}
+
 ```
 
 
 ```{r}
+cluster_vars <- c("kmeans", "hcpc", "hc.complete", "hc.avg", "hc.ward.D2")
+
+# Visualize contingency matrices as bar plots
+for (cluster_var in cluster_vars) {
+
+p <- ggplot(df, aes(x = get(cluster_var), y = price, fill = cluster)) +
+  geom_violin(trim = FALSE) +
+  labs(title = "Density of Variable by Cluster",
+       x = "Cluster", y = "Variable") +
+  theme_minimal()
+print(p)
+
+
 ```
 
 
 
 
 
+TOOD: 
 
+hypotheses test for clustering and price
 
-
-
+printout a csv inclduing the clusterings so that riccardo can work on the same clusters as I did.
 
 
 

@@ -114,8 +114,7 @@ data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
 data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
 
 # Impute missing values for 'num-of-doors' using mode
-mode_num_of_doors <- names(which.max(table(data$num.of.doors)))
-data$num.of.doors[is.na(data$num.of.doors)] <- mode_num_of_doors
+data$num.of.doors[is.na(data$num.of.doors)] <- "four"
 
 # Impute missing values for 'peak-rpm' using mean
 data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
