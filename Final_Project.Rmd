@@ -17,6 +17,8 @@ knitr::opts_chunk$set(echo = TRUE)
 # install.packages("vegan")
 
 # Load libraries
+library(RColorBrewer)
+
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -499,6 +501,21 @@ The PCA analysis revealed that the `price` variable aligns strongly with **Dim1*
 
 ### Price of Individuals based on PCA
 
+```{r}
+ind_coords <- as.data.frame(pca_result$ind$coord)
+
+# Add the price values to the coordinates
+ind_coords$price <- prepared_data$price_target
+
+# Plot the individuals with color gradient based on price
+ggplot(ind_coords, aes(x = Dim.1, y = Dim.2, color = price)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "PCA Plot of Individuals", x = "PC1", y = "PC2", color = "Price") +
+  theme_minimal()
+
+```
+
 
 ## MCA
 
@@ -577,6 +594,26 @@ for (cat_var in categorical_vars) {
 }
 
 ```
+
+## CA
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(ggplot2)
+
+# Create contingency table for analysis
+contingency_table <- table(data$make, data$fuel.type)
+contingency_table
+
+ca_result <- CA(contingency_table, graph = TRUE)
+
+fviz_ca_biplot(ca_result, repel = TRUE)
+
+str(data)
+
+```
+
+
 ## MCA
 
 ```{r}
@@ -595,7 +632,39 @@ mca_result <- MCA(categorical_data, graph = FALSE)
 
 # Summary of MCA results
 print(summary(mca_result))
+```
+### Contribution of variables to MCA
+```{r}
+# Extract the contributions matrix
+contributions <- mca_result$var$contrib
+contributions
+```
+```{r}
+# Define the color palette
+color_palette <- brewer.pal(min(9, ncol(contributions)), "Set3")  # Use "Set3" with up to 9 colors
 
+# Loop through the first few dimensions to create barplots
+for (dim in 1:4) {  # Loop over the first 4 dimensions, adjust as needed
+  
+  # Ensure the length of the variable names matches the number of contributions
+  current_contrib <- contributions[, dim]
+  
+  # Check for NA values (in case some contributions are missing)
+  current_contrib <- current_contrib[!is.na(current_contrib)]
+  
+  # Create barplot if no missing values are left
+  barplot(current_contrib, 
+          main = paste("Contributions to Dim", dim, "(MCA)"), 
+          xlab = "Variables", 
+          ylab = "Contribution (%)", 
+          col = color_palette[dim %% length(color_palette) + 1],  # Cycle through colors if more dimensions than colors
+          names.arg = names(current_contrib),  # Use the variable names
+          las = 2)  # Rotate axis labels for readability
+}
+
+```
+
+```{r}
 # Scree plot to visualize the eigenvalues
 fviz_screeplot(mca_result, addlabels = TRUE, ylim = c(0, 100), 
                title = "Scree Plot - MCA")
@@ -621,17 +690,6 @@ fviz_mca_biplot(mca_result,
                 geom = c("point", "text"), 
                 title = "MCA Biplot")
 
-```
-
-```{r}
-# Plot the individuals in the MCA space
-fviz_mca_ind(mca_result, 
-             geom.ind = "point", 
-             col.ind = "cos2", 
-             gradient.cols = c("blue", "yellow", "red"), 
-             repel = TRUE, 
-             title = "Individuals in MCA Space")
-
 # Plot the variables in the MCA space
 fviz_mca_var(mca_result, 
              choice = "var", 
@@ -639,13 +697,9 @@ fviz_mca_var(mca_result,
              repel = TRUE, 
              title = "Variables in MCA Space")
 
-# Biplot of individuals and variables
-fviz_mca_biplot(mca_result, 
-                repel = TRUE, 
-                geom = c("point", "text"), 
-                title = "MCA Biplot")
 
 ```
+
 ```{r}
 
 # Multiple Correspondence Analysis (MCA)
@@ -731,6 +785,1121 @@ fviz_cluster(res_hcpc,
 ```
 
 
+
+
+
+
+# Question 1: What variables have a big impact on the price
+## Cleaning
+```{r}
+library(ggplot2)
+library(corrplot)
+
+df <- data
+```
+
+
+
+## Correlation
+```{r}
+# Korrelationstabelle erstellen
+correlation_matrix <- cor(data[, sapply(data, is.numeric)])
+
+png("./plots/correlation_plot.png", width = 1000, height = 1000)
+corrplot(correlation_matrix, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         addCoef.col = "black", 
+         number.cex = 1.2,  # Vergrößert die Zahlen
+         tl.cex = 1.5,      # Vergrößert die Achsentitel
+         number.digits = 2, # Zeigt 2 Dezimalstellen bei den Korrelationen an
+         mar = c(0, 0, 1, 0))
+
+dev.off()  # Schließt die PNG-Datei und speichert den Plot
+
+corrplot(correlation_matrix, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         addCoef.col = "black", 
+         number.cex = 0.5,  # Vergrößert die Zahlen
+         tl.cex = 0.5,      # Vergrößert die Achsentitel
+         number.digits = 2, # Zeigt 2 Dezimalstellen bei den Korrelationen an
+         mar = c(0, 0, 1, 0))
+
+```
+```{r}
+numeric_vars <- data[, sapply(data, is.numeric)]
+
+# Erstelle den Pairplot
+#png("./plots/pairplot.png", width = 1000, height = 1000)  # Speicherort und -größe angeben
+pairs(numeric_vars, 
+      main = "Pairplot der numerischen Variablen", 
+      pch = 19,   # Punktmarkierung
+      col = rgb(0,0,1,0.5))  # Blaue Punkte mit Transparenz
+#dev.off()  # Schließt die PNG-Datei und speichert den Plot
+
+
+```
+```{r}
+selected_vars <- c("stroke", "compression.ratio", "peak.rpm")
+
+plot_vars <- numeric_vars[, selected_vars]
+
+# Speichere die Scatterplots in einer Datei
+#png("./plots/scatterplots_selected_vs_all.png", width = 1500, height = 1500)
+
+# Iteriere über jede ausgewählte Variable und erstelle Scatterplots gegen alle anderen numerischen Variablen
+for (var in selected_vars) {
+  for (colname in colnames(numeric_vars)) {
+    if (var != colname) {
+      p <- ggplot(data, aes_string(x = var, y = colname)) +
+        geom_point(color = rgb(0, 0, 1, 0.5)) + 
+        ggtitle(paste(var, "vs", colname)) +
+        theme_minimal() +
+        theme(plot.title = element_text(hjust = 0.5))
+      print(p)
+    }
+  }
+}
+
+# dev.off()  # Schließt die PNG-Datei und speichert den Plot
+
+```
+
+```{r}
+
+# png("./plots/compression_histo.png", width = 1500, height = 1500)
+threshold_value <- 15 # Dies könnte der Wert sein, an dem du die Trennung vornimmst
+
+
+ggplot(data, aes(x = compression.ratio)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black", size = 1.2) +  # Größere Balken
+  theme_minimal() +
+  geom_vline(xintercept = threshold_value, linetype = "dashed", color = "red", size = 4) +  # Trennlinie hinzufügen
+  xlab("Compression Ratio") +
+  ylab("Frequency") +
+  theme(
+    plot.title = element_text(size = 48, face = "bold"),  # Größere und fette Schrift für den Titel
+    axis.title = element_text(size = 48),  # Größere Schrift für Achsentitel
+    axis.text = element_text(size = 48)  # Größere Schrift für Achsenbeschriftungen
+  )
+
+# dev.off()  # Schließt die PNG-Datei und speichert den Plot
+
+data$group_compression <- ifelse(data$compression.ratio > threshold_value, "High", "Low")
+data$group_compression
+
+```
+### Investigation: Compression Group
+```{r}
+qqnorm(data$price[data$group_compression == "High"])
+qqline(data$price[data$group_compression == "High"])
+
+# Shapiro-Wilk-Test für Normalverteilung
+shapiro.test(data$price[data$group_compression == "High"])
+
+
+qqnorm(data$price[data$group_compression == "Low"])
+qqline(data$price[data$group_compression == "Low"])
+
+# Shapiro-Wilk-Test für Normalverteilung
+shapiro.test(data$price[data$group_compression == "Low"])
+
+
+kruskal_price <- kruskal.test(price ~ group_compression, data = data)
+print(kruskal_price)
+
+# Kruskal-Wallis-Test für horsepower
+kruskal_hp <- kruskal.test(horsepower ~ group_compression, data = data)
+print(kruskal_hp)
+
+```
+
+
+```{r}
+table(data$group_compression)
+
+png("./plots/histo_compression_price.png", width = 1000, height = 1000)  
+
+hist(data$price[data$group_compression == "Low"], 
+     col=rgb(0, 0, 1, 0.5), 
+     xlim=c(min(data$price), max(data$price)), 
+     main="", 
+     xlab="Price", ylab="Relative Frequency", 
+     prob=TRUE, breaks=20,  # Erhöhte Anzahl an Bins
+     xaxp=c(min(data$price), max(data$price), 10), 
+     cex.lab=2.5, cex.axis=2, cex.main=2.5)
+
+hist(data$price[data$group_compression == "High"], 
+     col=rgb(1, 0, 0, 0.5), 
+     add=TRUE, prob=TRUE, breaks=20)
+
+legend("topright", 
+       legend=c("Low Compression", "High Compression"), 
+       fill=c(rgb(0, 0, 1, 0.5), rgb(1, 0, 0, 0.5)),
+       cex=2)
+
+dev.off()  
+
+png("./plots/histo_compression_horsepower.png", width = 1000, height = 1000)  
+
+hist(data$horsepower[data$group_compression == "Low"], 
+     col=rgb(0, 0, 1, 0.5), 
+     xlim=c(min(data$horsepower), max(data$horsepower)), 
+     main="", 
+     xlab="Horsepower", ylab="Relative Frequency", 
+     prob=TRUE, breaks=20,  # Erhöhte Anzahl an Bins
+     xaxp=c(min(data$horsepower), max(data$horsepower), 10), 
+     cex.lab=1.5, cex.axis=1.2, cex.main=1.5)
+
+hist(data$horsepower[data$group_compression == "High"], 
+     col=rgb(1, 0, 0, 0.5), 
+     add=TRUE, prob=TRUE, breaks=20)
+
+legend("topright", 
+       legend=c("Low Compression", "High Compression"), 
+       fill=c(rgb(0, 0, 1, 0.5), rgb(1, 0, 0, 0.5)),
+       cex=1.5)
+
+dev.off()
+
+```
+### Relation Compression.Rate and Categorial Variables
+```{r}
+str(data)
+# List of categorical variables
+categorical_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", "body.style", "drive.wheels", "engine.location", "engine.type", "num.of.cylinders")
+
+# Loop over categorical variables
+for (var in categorical_vars) {
+  
+  # Create a contingency table
+  contingency_table <- table(data[[var]], data$group_compression)
+  
+  # Normalize the contingency table by row sums to get relative distribution
+  relative_table <- prop.table(contingency_table, margin = 1)
+  
+    # Print the relative contingency table
+  print(paste("Contingency Table for", var, "vs group_compression:"))
+  print(round(contingency_table, 2)) # Round for better readability
+
+  # Print the relative contingency table
+  print(paste("Relative Contingency Table for", var, "vs group_compression:"))
+  print(round(relative_table, 2)) # Round for better readability
+  
+  # Convert relative table to a data frame for plotting
+  relative_df <- as.data.frame(as.table(relative_table))
+  colnames(relative_df) <- c(var, "group_compression", "Proportion")
+  
+  # Create a heatmap for the relative distribution
+  heatmap <- ggplot(relative_df, aes_string(x = var, y = "group_compression", fill = "Proportion")) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = paste("Relative Heatmap of", var, "vs group_compression"), x = var, y = "group_compression") +
+    theme_minimal()
+  
+  # Print the heatmap
+  print(heatmap)
+}
+  
+```
+```{r}
+# Initialize an empty data frame to store variable names and p-values
+p_values_table <- data.frame(Variable = character(), P_Value = numeric(), stringsAsFactors = FALSE)
+
+# Loop over categorical variables
+for (var in categorical_vars) {
+  # Create a contingency table
+  contingency_table <- table(data[[var]], data$group_compression)
+  
+  # Perform Chi-Square Test
+  chi_sq_result <- chisq.test(contingency_table)
+  
+  # Check expected frequencies
+  print("-----------------------------------------------------------")
+  print(contingency_table)
+  print(paste("Chi-Square Test for", var, "vs group_compression:"))
+  print(chi_sq_result)
+  
+  if (any(chi_sq_result$expected < 5)) {
+    warning(paste("Warning: Some expected frequencies are less than 5 in", var))
+  }
+  
+  # Add the variable name and p-value to the table
+  p_values_table <- rbind(p_values_table, data.frame(Variable = var, P_Value = chi_sq_result$p.value))
+  
+  # Highlight significant results
+  if (chi_sq_result$p.value < 0.05) {
+    print("+++++++++++++++ Significant result")
+  }
+}
+
+# Print the collected p-values in a table
+print("P-Values Table:")
+print(p_values_table)
+
+```
+## Size related analysis
+
+```{r}
+library(GGally)
+variables <- df[, c("width", "wheel.base", "length", "price", "fuel.type")]
+
+# Create a grid of scatterplots with color by fuel.type
+pairwise_plot <- ggpairs(variables, 
+                         aes(color = fuel.type), # Add color by fuel.type
+                         lower = list(continuous = wrap("points", alpha = 0.6)),
+                         diag = list(continuous = wrap("densityDiag", alpha = 0.6)),
+                         upper = list(continuous = wrap("cor", size = 4))) +
+  theme_minimal()  # Optional: Apply a cleaner theme
+
+# Print the pairwise plot
+print(pairwise_plot)
+
+```
+
+```{r}
+
+ggplot(data, aes(x = price)) +
+  geom_histogram(fill = "skyblue", color = "black", size = 1.2) +  # Größere Balken
+  theme_minimal() +
+  xlab("Compression Ratio") +
+  ylab("Frequency") +
+  theme_minimal()
+
+
+```
+```{r}
+df <- data
+# drop compression rate
+df <- subset(df, select = -c(stroke))
+
+
+
+
+# drop compression rate
+df <- subset(df, select = -c(compression.ratio, group_compression))
+
+# combine width and length to area
+df$area <- df$width * df$length
+df <- subset(df, select = -c(width, length))
+
+
+str(df)
+```
+```{r}
+
+# Load necessary library
+library(FactoMineR)
+library(factoextra)
+
+# Step 1: Select numerical variables
+numerical_data <- df[, sapply(df, is.numeric) & names(df) != "price"]
+
+# Scale the numerical variables
+scaled_numerical_data <- scale(numerical_data)
+
+# cat_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", 
+cat_vars <- c("make", "aspiration", "num.of.doors", 
+                                     "body.style", "drive.wheels", "engine.location", 
+                                     "engine.type", "num.of.cylinders", "fuel.system")
+
+# Step 2: Select all categorical variables as supplementary qualitative variables
+categorical_variables <- df[, cat_vars]
+
+# Add the target variable (price) as supplementary quantitative variable
+price_target <- df[, "price"]
+
+# Combine scaled numerical data with categorical variables and target variable
+prepared_data <- cbind(scaled_numerical_data, categorical_variables, price_target)
+
+# Perform PCA with supplementary variables
+pca_result <- PCA(prepared_data, 
+                  quali.sup = which(names(prepared_data) %in% cat_vars), 
+                  quanti.sup = which(names(prepared_data) == "price_target"), 
+                  graph = FALSE)
+
+# Summary of PCA
+print(summary(pca_result))
+
+# Visualize PCA results
+# Scree plot
+fviz_screeplot(pca_result, addlabels = TRUE, ylim = c(0, 100))
+
+# PCA biplot
+fviz_pca_biplot(pca_result, 
+                geom.ind = "point", 
+                col.ind = "cos2", 
+                gradient.cols = c("blue", "yellow", "red"), 
+                repel = TRUE)
+
+```
+#### PCA on df[fuel = gas]
+```{r}
+
+# Load necessary library
+library(FactoMineR)
+library(factoextra)
+
+# Step 1: Select numerical variables
+df_gas <- df[df$fuel.type == "gas", ]
+
+numerical_data <- df_gas[, sapply(df_gas, is.numeric) & names(df_gas) != "price"]
+scaled_numerical_data <- scale(numerical_data)
+
+cat_vars <- c("make", "aspiration", "num.of.doors", 
+                                     "body.style", "drive.wheels", "engine.location", 
+                                     "engine.type", "num.of.cylinders", "fuel.system")
+
+categorical_variables <- df_gas[, cat_vars]
+
+price_target <- df_gas[, "price"]
+
+# Combine scaled, categorical and target variable
+prepared_data <- cbind(scaled_numerical_data, categorical_variables, price_target)
+
+pca_result_gas <- PCA(prepared_data, 
+                  quali.sup = which(names(prepared_data) %in% cat_vars), 
+                  quanti.sup = which(names(prepared_data) == "price_target"), 
+                  graph = FALSE)
+
+# Summary of PCA
+print(summary(pca_result_gas))
+
+# Visualize PCA results
+# Scree plot
+fviz_screeplot(pca_result_gas, addlabels = TRUE, ylim = c(0, 100))
+
+# PCA biplot
+fviz_pca_biplot(pca_result_gas, 
+                geom.ind = "point", 
+                col.ind = "cos2", 
+                gradient.cols = c("blue", "yellow", "red"), 
+                repel = TRUE)
+```
+
+
+
+```{r}
+library(factoextra)
+library(ggplot2)
+
+# Extract cos2 values for all variables across all dimensions
+cos2_values <- pca_result$var$cos2
+
+# Convert cos2 values to a data frame for easier manipulation
+cos2_df <- as.data.frame(cos2_values)
+cos2_df$Variable <- rownames(cos2_df)
+
+# Melt the data for plotting
+library(reshape2)
+cos2_melt <- melt(cos2_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Cos2")
+
+# Loop through each dimension to create a separate plot
+for (dim in unique(cos2_melt$Dimension)) {
+  # Filter data for the current dimension
+  dim_data <- subset(cos2_melt, Dimension == dim)
+  
+  # Create the plot
+  plot <- ggplot(dim_data, aes(x = Variable, y = Cos2, fill = Variable)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Cos2 Values for", dim),
+         x = "Variable",
+         y = "Cos2 Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print the plot
+  print(plot)
+}
+
+
+```
+
+
+```{r}
+# Extract loadings for variables
+loadings <- pca_result$var$coord
+
+# Convert loadings to a data frame
+loadings_df <- as.data.frame(loadings)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Melt for plotting
+library(reshape2)
+loadings_melt <- melt(loadings_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Loading")
+
+# Plot loadings for each dimension
+for (dim in unique(loadings_melt$Dimension)) {
+  dim_data <- subset(loadings_melt, Dimension == dim)
+  
+  plot <- ggplot(dim_data, aes(x = Variable, y = Loading, fill = Loading)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Variable Loadings for", dim),
+         x = "Variable",
+         y = "Loading") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0)
+  
+  print(plot)
+}
+
+loadings <- pca_result_gas$var$coord
+
+# Convert loadings to a data frame
+loadings_df <- as.data.frame(loadings)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Melt for plotting
+loadings_melt <- melt(loadings_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Loading")
+
+# Plot loadings for each dimension
+for (dim in unique(loadings_melt$Dimension)) {
+  dim_data <- subset(loadings_melt, Dimension == dim)
+  
+  plot <- ggplot(dim_data, aes(x = Variable, y = Loading, fill = Loading)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Variable Loadings for", dim),
+         x = "Variable",
+         y = "Loading") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0)
+  
+  print(plot)
+}
+
+```
+
+
+```{r}
+
+dims <- list(c(1, 2), c(2, 3), c(1, 3))  # Pairs of dimensions to plot
+
+for (axes in dims) {
+  print(
+        fviz_pca_ind(pca_result, 
+                    geom.ind = "point", 
+                    col.ind = df$price, 
+                    gradient.cols = c("blue", "yellow", "red"), 
+                    repel = TRUE,
+                    axes = axes) +
+      labs(title = paste("PCA Biplot: Dim", axes[1], "vs Dim", axes[2], "Colored by Price"), 
+           color = "Price")
+  )
+  print(
+    fviz_pca_biplot(pca_result, 
+                    geom.ind = "point", 
+                    col.ind = df$price, 
+                    gradient.cols = c("blue", "yellow", "red"), 
+                    repel = TRUE,
+                    axes = axes) +
+      labs(title = paste("PCA Biplot: Dim", axes[1], "vs Dim", axes[2], "Colored by Price"), 
+           color = "Price")
+  )
+}
+
+```
+## Relation of PCA and price
+### Correlation PCA and price
+```{r}
+
+dim_scores <- as.data.frame(pca_result$ind$coord)
+
+# Add price to the data frame
+dim_scores$price <- df$price
+
+# Compute correlation between price and each dimension
+correlations <- sapply(dim_scores[, -ncol(dim_scores)], function(x) cor(x, dim_scores$price))
+
+# Print the correlations
+print(correlations)
+cor_df <- data.frame(Dimension = paste0("Dim", 1:length(correlations)), 
+                     Correlation = correlations)
+
+# Bar plot of correlations
+ggplot(cor_df, aes(x = Dimension, y = Correlation, fill = Correlation)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "Correlation Between Price and PCA Dimensions",
+       x = "PCA Dimensions",
+       y = "Correlation Coefficient")
+
+
+dim_scores <- as.data.frame(pca_result_gas$ind$coord)
+
+# Add price to the data frame
+dim_scores$price <- df_gas$price
+
+# Compute correlation between price and each dimension
+correlations <- sapply(dim_scores[, -ncol(dim_scores)], function(x) cor(x, dim_scores$price))
+
+# Print the correlations
+print(correlations)
+cor_df <- data.frame(Dimension = paste0("Dim", 1:length(correlations)), 
+                     Correlation = correlations)
+
+# Bar plot of correlations
+ggplot(cor_df, aes(x = Dimension, y = Correlation, fill = Correlation)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "Correlation Between Price and PCA Dimensions (only 'gas' cars)",
+       x = "PCA Dimensions",
+       y = "Correlation Coefficient")
+
+```
+
+### QQ Plot PCA and price
+#### Basic PCA
+
+
+```{r}
+# Extract PCA dimensions
+pca_dimensions <- as.data.frame(pca_result$ind$coord)
+
+# Add the target variable (price)
+pca_dimensions$price <- df$price
+
+# Loop through each dimension and price to create QQ plots
+for (dim in colnames(pca_dimensions)) {
+  qqplot <- ggplot(pca_dimensions, aes(sample = .data[[dim]])) +
+    stat_qq() +  # Create the QQ plot
+    stat_qq_line() +  # Add the theoretical line
+    theme_minimal() +
+    labs(title = paste("QQ Plot for", dim),
+         x = "Theoretical Quantiles",
+         y = "Sample Quantiles")
+  
+  # Print the QQ plot
+  print(qqplot)
+}
+
+
+```
+#### PCA on only gas
+
+```{r}
+# Extract PCA dimensions
+pca_dimensions <- as.data.frame(pca_result_gas$ind$coord)
+
+# Add the target variable (price)
+pca_dimensions$price <- df_gas$price
+
+# Loop through each dimension and price to create QQ plots
+for (dim in colnames(pca_dimensions)) {
+  qqplot <- ggplot(pca_dimensions, aes(sample = .data[[dim]])) +
+    stat_qq() +  # Create the QQ plot
+    stat_qq_line() +  # Add the theoretical line
+    theme_minimal() +
+    labs(title = paste("QQ Plot for", dim),
+         x = "Theoretical Quantiles",
+         y = "Sample Quantiles")
+  
+  # Print the QQ plot
+  print(qqplot)
+}
+
+
+```
+
+
+### Regression PCA and price
+
+```{r}
+# Extract PCA dimensions
+pca_dimensions <- as.data.frame(pca_result$ind$coord)
+
+# Add the target variable (price)
+pca_dimensions$price <- df$price
+
+# Loop through each PCA dimension to perform regression and plot
+for (dim in colnames(pca_dimensions)[-ncol(pca_dimensions)]) {  # Exclude 'price' in iteration
+  # Perform regression
+  formula <- as.formula(paste("price ~", dim))
+  model <- lm(formula, data = pca_dimensions)
+  
+  # Print regression summary
+  cat("\nRegression Summary for", dim, ":\n")
+  print(summary(model))
+  
+  # Plot regression results
+  plot <- ggplot(pca_dimensions, aes_string(x = dim, y = "price")) +
+    geom_point(alpha = 0.6) +  # Scatter plot
+    geom_smooth(method = "lm", color = "blue") +  # Regression line
+    labs(title = paste("Regression of Price on", dim),
+         x = dim,
+         y = "Price") +
+    theme_minimal()
+  
+  # Print the plot
+  print(plot)
+}
+
+
+
+```
+Regression models:
+- dim1 is significant (p < 1e-15) explaining ~ 71% of the variance
+- dim2 is significant (p=0.04545) explaining ~ 2% of the variance 
+- dim3 not significant
+- dim4 and dim5 are significant explaining ~ 4 % of the variance (each)
+
+Limiting the analysis to the cars of the gas type leaves most of the values unchanged.
+Therefore, one can argue that the fueltype itself does not 
+
+
+### PCA and fuel type: 
+
+
+```{r}
+dims <- list(c(1, 2), c(2, 3), c(1, 3))  # Pairs of dimensions to plot
+for (axes in dims) {
+  print(
+    fviz_pca_ind(pca_result, 
+                 geom.ind = "point", 
+                 col.ind = df$fuel.type,  # Use fuel.type for coloring
+                 palette = c("blue", "red"),  # Specify colors for categories
+                 repel = TRUE,
+                 axes = axes) +
+      labs(title = paste("PCA Biplot: Dim", axes[1], "vs Dim", axes[2], "Colored by Fuel Type"), 
+           color = "Fuel Type")
+  )
+  print(
+    fviz_pca_ind(pca_result_gas, 
+                 geom.ind = "point", 
+                 col.ind = df_gas$fuel.type,  # Use fuel.type for coloring
+                 palette = c("blue", "red"),  # Specify colors for categories
+                 repel = TRUE,
+                 axes = axes) +
+      labs(title = paste("PCA Biplot: Dim", axes[1], "vs Dim", axes[2], "Colored by Fuel Type"), 
+           color = "Fuel Type")
+  )
+}
+
+
+```
+
+```{r}
+
+dims <- list(c(1, 2), c(2, 3), c(1, 3))  # Pairs of dimensions to plot
+# Extract PCA scores for individuals
+pca_scores <- as.data.frame(pca_result$ind$coord)
+
+# Combine PCA scores with the original data
+pca_scores$fuel.type <- df$fuel.type
+pca_scores$price <- df$price
+
+# Loop through the desired dimensions for plotting
+for (axes in dims) {
+  # Create the ggplot object
+  pca_plot <- ggplot(pca_scores, aes_string(x = paste0("Dim.", axes[1]), 
+                                            y = paste0("Dim.", axes[2]), 
+                                            color = "price", 
+                                            shape = "fuel.type")) +
+    geom_point(size = 3, alpha = 0.7) +  # Scatter points
+    scale_color_gradient(low = "blue", high = "red") +  # Gradient for price
+    labs(title = paste("PCA Plot: Dim", axes[1], "vs Dim", axes[2]), 
+         x = paste("Dimension", axes[1]), 
+         y = paste("Dimension", axes[2]), 
+         color = "Price", 
+         shape = "Fuel Type") +  # Add labels
+    theme_minimal() +
+    theme(legend.position = "right")
+  
+  # Print the ggplot object
+  print(pca_plot)
+}
+
+```
+
+viz. not really helpful.
+
+
+
+# Multiregression based on PCA
+```{r}
+# Initialize an empty list to store models
+models <- list()
+
+# Define the number of PCA dimensions to include in each model
+dimensions_to_include <- list(c(1, 2), c(1,2,4,5), 1:ncol(pca_result$ind$coord)) 
+
+# Loop through each subset of dimensions and create a model
+for (dims in dimensions_to_include) {
+  # Subset the PCA dimensions
+  pca_subset <- pca_coords[, c(paste0("Dim.", dims), "price")]
+  
+  # Build the regression model
+  model <- lm(price ~ ., data = pca_subset)
+  print("-------------------------------")
+  print(summary(model))
+
+  
+  # Add the model to the list
+  models[[paste("Model_with", length(dims), "Dims")]] <- model
+  
+}
+
+
+
+```
+Quite accurate models  (multiple R-squared is ~0.81) for 
+
+
+```{r}
+
+# Scatter plot
+library(ggplot2)
+# Loop through models and plot residuals
+
+# Loop through models and plot predicted vs actual prices
+for (model_name in names(models)) {
+  # Get the predicted prices for the current model
+  predicted_price <- predict(models[[model_name]])
+  
+  # Create the plot
+  plot <- ggplot(data = data.frame(actual_price = pca_coords$price, predicted_price = predicted_price),
+                 aes(x = actual_price, y = predicted_price)) +
+    geom_point(alpha = 0.7) +
+    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+    labs(title = paste("Predicted vs Actual Prices:", model_name),
+         x = "Actual Price",
+         y = "Predicted Price") +
+    theme_minimal()
+  
+  # Print the plot
+  print(plot)
+}
+
+```
+
+# Cluster Analysis
+
+```{r}
+library(factoextra)
+
+```
+
+## Clusters
+### HCPC
+```{r}
+numeric_df <- df[, sapply(df, is.numeric) & names(df) != "price"]
+
+# Perform PCA on numeric variables
+res_hcpc.pca <- PCA(numeric_df, ncp = 2, graph = FALSE)
+
+res_hcpc.hcpc <- HCPC(res.pca, graph = FALSE)
+
+# Dendrogram using fviz_dend
+fviz_dend(res_hcpc.hcpc, rect = TRUE, rect_fill = TRUE)
+
+## 3D plot ##
+plot(res_hcpc.hcpc, choice = "3D.map")
+
+# Visualization of Clusters
+fviz_cluster(res_hcpc.hcpc,
+             geom = "point",
+             repel = FALSE, 
+             show.clust.cent = TRUE, 
+             main = "Factor map")  # Exclude text labels
+             
+```
+
+
+###  Hierarchical Clusters 
+```{r}
+numeric_df <- df[, sapply(df, is.numeric)]
+scaled_numeric_df <- scale(numeric_df)
+
+# Transpose the data frame to compute distances between variables
+# transposed_df <- t(scaled_numeric_df)
+
+d <- dist(scaled_numeric_df)
+
+dist_matrix_df <- as.data.frame(as.table(as.matrix(d)))
+
+# Create a heatmap
+ggplot(dist_matrix_df, aes(Var1, Var2, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue") +
+  labs(title = "Distance Between Points", x = "Observation", y = "Observation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+methods <- c("single", "complete", "average", "ward.D2", "centroid")
+
+# Initialize an empty list to store results
+res_euclide.fit <- list()
+
+# Loop through the methods and perform hierarchical clustering
+for (method in methods) {
+  # Compute hierarchical clustering
+  fit <- hclust(d, method = method)
+  
+  # Add the clustering result to the list with the method name
+  res_euclide.fit[[method]] <- fit
+  
+  # Plot the dendrogram
+  plot(fit, main = paste("Dendrogram of", method, "Linkage"), xlab = "", sub = "")
+}
+ 
+
+```
+#### Ellbow selection of clusters
+this was not helpful to devide the clusters
+```{r}
+for (method in names(res_euclide.fit)) {
+  fit <- res_euclide.fit[[method]]  # Extract the hclust object
+  
+  # Plot the Elbow Method for the current fit
+  plot(fit$height, 
+       type = "b", 
+       main = paste("Elbow Method for", method, "Linkage"), 
+       xlab = "Number of Clusters", 
+       ylab = "Height")
+}
+
+```
+#### NbClust
+```{r}
+library(NbClust)
+
+# Determine the number of clusters
+methods <- c("single", "complete", "average", "ward.D2", "centroid")
+for (meth in methods) {
+  nb <- NbClust(scaled_numeric_df, distance = "euclidean", min.nc = 2, max.nc = 10, method = meth)
+  
+}
+
+```
+```{r}
+ks <- c(2, 2, 5, 2, 3)  # Number of clusters for each method
+
+res_euclide.clusters <- list()
+
+for (i in 1:length(methods)) {
+  method <- methods[i]  # Get the current method
+  fit <- res_euclide.fit[[method]]  # Retrieve the hclust object
+  res_euclide.clusters[[method]] <- cutree(fit, k = ks[i])  # Cut the tree
+}
+
+```
+```
+res_euclide.clusters[[method
+
+```
+
+
+### Relation to Price
+#### aggregate
+```{r}
+cluster_summaries <- list()
+
+# Loop through clustering results
+for (method in names(res_euclide.clusters)) {
+  clusters <- res_euclide.clusters[[method]]  # Get cluster assignments
+  
+  # Add cluster assignments to the data
+  df$cluster <- clusters
+  
+  # Summarize price statistics by cluster
+  cluster_summary <- aggregate(price ~ cluster, data = df, 
+                                FUN = function(x) c(mean = mean(x), median = median(x), sd = sd(x), n = length(x)))
+  
+  # Store the summary in the list
+  cluster_summaries[[method]] <- cluster_summary
+  print(cluster_summary)
+
+}
+
+```
+### viz (Scatter and Boxplots)
+```{r}
+
+pca_coords <- as.data.frame(pca_result$ind$coord)
+
+for (method in names(res_euclide.clusters)) {
+  # Get cluster assignments
+  clusters <- res_euclide.clusters[[method]]
+  
+  # Add cluster assignments to the data
+  df$cluster <- as.factor(clusters)
+  
+  # Create a boxplot of price by cluster
+  p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+    geom_boxplot() +
+    labs(title = paste("Price Distribution by Clusters (Method:", method, ")"),
+         x = "Cluster", y = "Price") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Print the plot explicitly
+  print(p)
+  pca_coords[[method]] <- as.factor(clusters)  # Store clusters for each method
+  
+  p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = pca_coords[[method]])) +
+    geom_point(size = 3, alpha = 0.7) +
+    labs(title = paste("Clusters Visualized on PCA Dimensions (Method:", method, ")"),
+         x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+    theme_minimal()
+    
+  # Print the plot explicitly
+  print(p)
+  
+    # Create a bar plot for cluster sizes
+  cluster_sizes <- as.data.frame(table(clusters))
+  print(cluster_sizes)
+  
+  colnames(cluster_sizes) <- c("Cluster", "Count")
+  
+  p <- ggplot(cluster_sizes, aes(x = Cluster, y = Count, fill = Cluster)) +
+    geom_bar(stat = "identity") +
+    labs(title = paste("Cluster Sizes (Method:", method, ")"),
+         x = "Cluster", y = "Count") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Print the bar plot
+  print(p)
+}
+
+######### Clustering of hc clustering
+
+# Extract HCPC cluster assignments
+df$cluster <- as.factor(res_hcpc.hcpc$data.clust$clust)
+
+# Boxplot of price by cluster
+p <- ggplot(df, aes(x = cluster, y = price, fill = cluster)) +
+  geom_boxplot() +
+  labs(title = "Price Distribution by Clusters (HCPC Method)",
+       x = "Cluster", y = "Price") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+# Add HCPC clusters to PCA coordinates
+pca_coords$HCPC_cluster <- as.factor(res_hcpc.hcpc$data.clust$clust)
+
+# Scatter plot of clusters on PCA dimensions
+p <- ggplot(pca_coords, aes(x = Dim.1, y = Dim.2, color = HCPC_cluster)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "Clusters Visualized on PCA Dimensions (HCPC Method)",
+       x = "PCA Dimension 1", y = "PCA Dimension 2", color = "Cluster") +
+  theme_minimal()
+print(p)
+
+# Bar plot of cluster sizes
+cluster_sizes <- as.data.frame(table(res_hcpc.hcpc$data.clust$clust))
+colnames(cluster_sizes) <- c("Cluster", "Count")
+
+p <- ggplot(cluster_sizes, aes(x = Cluster, y = Count, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Cluster Sizes (HCPC Method)",
+       x = "Cluster", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+print(p)
+
+
+
+```
+Ad methods:
+- discard 'single' (very inbalanced: [204;1])
+- complete reasonable: goo seperation of prices and finish cluster sizes [155, 50]
+- avg very good. Seperates two outlier groups and 3 classes of price ranges [58;131;10;	2;	4]	
+- ward.2D similar to complete but clearer seperation on PCA viz. 
+- centroid creates one big and two (very) small clusters [189; 14; 2]
+
+- hcpc very good as well.
+
+```{r}
+
+str(df)
+# df$cluster.hcoc
+
+pca_coords[["average"]] <- as.factor(res_euclide.clusters[["average"]])
+
+categorical_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", "body.style", "drive.wheels", "engine.location")  # Add your desired variables
+
+# Loop through each categorical variable
+for (cat_var in categorical_vars) {
+  # Ensure the categorical variable exists in the dataframe and is a factor
+  if (!is.factor(df[[cat_var]])) {
+    df[[cat_var]] <- as.factor(df[[cat_var]])
+  }
+  
+  # Create the scatter plot
+  p <- ggplot(pca_coords, 
+              aes(x = Dim.1, y = Dim.2, 
+                  shape = df[[cat_var]],  # Color by the categorical variable
+                  color = pca_coords[["average"]])) +  # Shape by cluster
+    geom_point(size = 3, alpha = 0.7) +
+    stat_ellipse(aes(group = pca_coords[["average"]]), level = 0.95) +  # Ellipses for clusters
+    labs(title = paste("PCA Clusters with", cat_var, "Colored"),
+         x = "PCA Dimension 1", y = "PCA Dimension 2", 
+         color = cat_var, shape = "Cluster") +
+    theme_minimal()
+  
+  # Print the plot
+  print(p)
+}
+
+
+```
+
+```{r}
+categorical_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", "body.style", "drive.wheels", "engine.location", "engine.type", "num.of.cylinders")
+
+df$cluster.avg <- as.factor(res_euclide.clusters[["average"]])
+
+# Loop over categorical variables
+for (var in categorical_vars) {
+  
+  # Create a contingency table
+  contingency_table <- table(df[[var]], df$cluster.avg)
+  
+  # Normalize the contingency table by row sums to get relative distribution
+  relative_table <- prop.table(contingency_table, margin = 1)
+  
+    # Print the relative contingency table
+  print(paste("Contingency Table for", var, "vs group_compression:"))
+  print(round(contingency_table, 2)) # Round for better readability
+
+  # Print the relative contingency table
+  print(paste("Relative Contingency Table for", var, "vs group_compression:"))
+  print(round(relative_table, 2)) # Round for better readability
+  
+  # Convert relative table to a data frame for plotting
+  relative_df <- as.data.frame(as.table(relative_table))
+  colnames(relative_df) <- c(var, "group_compression", "Proportion")
+  
+  # Create a heatmap for the relative distribution
+  heatmap <- ggplot(relative_df, aes_string(x = var, y = "group_compression", fill = "Proportion")) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = paste("Relative Heatmap of", var, "vs group_compression"), x = var, y = "group_compression") +
+    theme_minimal()
+  
+  # Print the heatmap
+  print(heatmap)
+}
+  
+
+
+
+
+```
+
+## k means
 
 
 

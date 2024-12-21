@@ -1,0 +1,348 @@
+
+# Preprocessing
+```{r}
+full.data <- read.csv("./cleaned_data.csv", header = TRUE, sep = ",")
+# full.data <- read.csv("./clustered_data.csv", header = TRUE, sep = ",")
+df <- full.data
+
+############################
+## drop compression rate
+############################
+if ("compression.ratio" %in% colnames(df)) {
+  df <- subset(df, select = -c(compression.ratio))
+}
+
+############################
+## drop stroke
+############################
+if ("stroke" %in% colnames(df)) {
+  df <- subset(df, select = -c(stroke))
+}
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+if ("width" %in% colnames(df) && "length" %in% colnames(df)) {
+  df$area <- df$width * df$length
+  
+  df <- subset(df, select = -c(width, length))
+}
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+if ("city.mpg" %in% colnames(df) && "highway.mpg" %in% colnames(df)) {
+  df$mpg <- rowMeans(df[, c("city.mpg", "highway.mpg")], na.rm = TRUE)
+  
+  df <- df[, !colnames(df) %in% c("city.mpg", "highway.mpg")]
+}
+
+############################
+## drop insurance  data
+############################
+if ("normalized.losses" %in% colnames(df)){
+  df <- subset(df, select = -c(normalized.losses))
+}
+
+if ("symboling" %in% colnames(df)){
+  df <- subset(df, select = -c(symboling))
+}
+
+
+categorial_vars.all <- c("make", "symboling", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system",
+                         #clusters:
+                         "kmeans", "hcpc", "complete", "hc.avg", "hc.ward.D2")
+
+for (cat_var in categorial_vars.all) {
+  if (cat_var %in% colnames(df)) {
+    df[[cat_var]] <- as.factor(df[[cat_var]])
+  }
+}
+
+
+numerical_vars.all <- c("normalized.losses", "wheel.base", "length", "width", "height",
+                        "area", "crub.weight", "engine.size", "bore", "stroke",
+                        "horsepower", "peak.rpm", "city.mpg", "highway.mpg", "mpg", "price")
+
+for (num_var in numerical_vars.all) {
+  if (num_var %in% colnames(df)) {
+    df[[num_var]] <- as.numeric(as.character(df[[num_var]]))
+  }
+}
+
+str(df)
+
+# Summary statistics
+summary(df)
+
+```
+
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(ggplot2)
+library(corrplot)
+```
+
+# PCA
+```{r}
+# Step 1: Select numerical variables
+numerical_data <- df[, sapply(df, is.numeric) & names(df) != "price"]
+str(numerical_data)
+
+# Scale the numerical variables
+scaled_numerical_data <- scale(numerical_data)
+
+# cat_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", 
+cat_vars <- c("make", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system")
+
+# Step 2: Select all categorical variables as supplementary qualitative variables
+categorical_variables <- df[, cat_vars]
+
+# Add the target variable (price) as supplementary quantitative variable
+price_target <- df[, "price"]
+
+# Combine scaled numerical data with categorical variables and target variable
+prepared_data <- cbind(scaled_numerical_data, categorical_variables, price_target)
+
+# Perform PCA with supplementary variables
+pca_result <- PCA(prepared_data, 
+                  quali.sup = which(names(prepared_data) %in% cat_vars), 
+                  quanti.sup = which(names(prepared_data) == "price_target"), 
+                  graph = FALSE)
+
+# Summary of PCA
+print(summary(pca_result))
+
+# Visualize PCA results
+# Scree plot
+fviz_screeplot(pca_result, addlabels = TRUE, ylim = c(0, 100))
+
+# PCA biplot
+fviz_pca_biplot(pca_result, 
+                geom.ind = "point", 
+                col.ind = "cos2", 
+                gradient.cols = c("blue", "yellow", "red"), 
+                repel = TRUE)
+```
+## Cos2 of PCA Dims
+```{r}
+# Extract cos2 values for all variables across all dimensions
+cos2_values <- pca_result$var$cos2
+
+# Convert cos2 values to a data frame for easier manipulation
+cos2_df <- as.data.frame(cos2_values)
+cos2_df$Variable <- rownames(cos2_df)
+
+# Melt the data for plotting
+library(reshape2)
+cos2_melt <- melt(cos2_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Cos2")
+
+# Loop through each dimension to create a separate plot
+for (dim in unique(cos2_melt$Dimension)) {
+  # Filter data for the current dimension
+  dim_data <- subset(cos2_melt, Dimension == dim)
+  
+  # Create the plot
+  plot <- ggplot(dim_data, aes(x = Variable, y = Cos2, fill = Variable)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Cos2 Values for", dim),
+         x = "Variable",
+         y = "Cos2 Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print the plot
+  print(plot)
+}
+
+
+```
+
+## Loadings of Dims
+
+```{r}
+# Extract loadings for variables
+loadings <- pca_result$var$coord
+
+# Convert loadings to a data frame
+loadings_df <- as.data.frame(loadings)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Melt for plotting
+library(reshape2)
+loadings_melt <- melt(loadings_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Loading")
+
+# Plot loadings for each dimension
+for (dim in unique(loadings_melt$Dimension)) {
+  dim_data <- subset(loadings_melt, Dimension == dim)
+  
+  plot <- ggplot(dim_data, aes(x = Variable, y = Loading, fill = Loading)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Variable Loadings for", dim),
+         x = "Variable",
+         y = "Loading") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0)
+  
+  print(plot)
+}
+
+```
+
+### Correlation Matrix
+
+## Correlation
+```{r}
+# Korrelationstabelle erstellen
+correlation_matrix <- cor(df[, sapply(df, is.numeric)])
+
+png("./plots/correlation_plot.png", width = 1000, height = 1000)
+corrplot(correlation_matrix, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         addCoef.col = "black", 
+         number.cex = 1.2,  # Vergrößert die Zahlen
+         tl.cex = 1.5,      # Vergrößert die Achsentitel
+         number.digits = 2, # Zeigt 2 Dezimalstellen bei den Korrelationen an
+         mar = c(0, 0, 1, 0))
+
+dev.off()  # Schließt die PNG-Datei und speichert den Plot
+
+corrplot(correlation_matrix, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         addCoef.col = "black", 
+         number.cex = 0.5,  # Vergrößert die Zahlen
+         tl.cex = 0.5,      # Vergrößert die Achsentitel
+         number.digits = 2, # Zeigt 2 Dezimalstellen bei den Korrelationen an
+         mar = c(0, 0, 1, 0))
+
+```
+
+
+# PCA limited to two dimensions
+
+```{r}
+# Step 1: Select numerical variables
+numerical_data <- df[, sapply(df, is.numeric) & names(df) != "price"]
+str(numerical_data)
+
+# Scale the numerical variables
+scaled_numerical_data <- scale(numerical_data)
+
+# cat_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", 
+cat_vars <- c("make", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system")
+
+# Step 2: Select all categorical variables as supplementary qualitative variables
+categorical_variables <- df[, cat_vars]
+
+# Add the target variable (price) as supplementary quantitative variable
+price_target <- df[, "price"]
+
+# Combine scaled numerical data with categorical variables and target variable
+prepared_data <- cbind(scaled_numerical_data, categorical_variables, price_target)
+
+# Perform PCA with supplementary variables
+pca_result <- PCA(prepared_data, 
+                  quali.sup = which(names(prepared_data) %in% cat_vars), 
+                  quanti.sup = which(names(prepared_data) == "price_target"), 
+                  graph = FALSE)
+
+# Summary of PCA
+print(summary(pca_result))
+
+# Visualize PCA results
+# Scree plot
+fviz_screeplot(pca_result, addlabels = TRUE, ylim = c(0, 100))
+
+# PCA biplot
+fviz_pca_biplot(pca_result, 
+                geom.ind = "point", 
+                col.ind = "cos2", 
+                gradient.cols = c("blue", "yellow", "red"), 
+                repel = TRUE)
+```
+## Cos2 of PCA Dims
+```{r}
+# Extract cos2 values for all variables across all dimensions
+cos2_values <- pca_result$var$cos2
+
+# Convert cos2 values to a data frame for easier manipulation
+cos2_df <- as.data.frame(cos2_values)
+cos2_df$Variable <- rownames(cos2_df)
+
+# Melt the data for plotting
+library(reshape2)
+cos2_melt <- melt(cos2_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Cos2")
+
+# Loop through each dimension to create a separate plot
+for (dim in unique(cos2_melt$Dimension)) {
+  # Filter data for the current dimension
+  dim_data <- subset(cos2_melt, Dimension == dim)
+  
+  # Create the plot
+  plot <- ggplot(dim_data, aes(x = Variable, y = Cos2, fill = Variable)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Cos2 Values for", dim),
+         x = "Variable",
+         y = "Cos2 Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print the plot
+  print(plot)
+}
+
+
+```
+
+## Loadings of Dims
+
+```{r}
+# Extract loadings for variables
+loadings <- pca_result$var$coord
+
+# Convert loadings to a data frame
+loadings_df <- as.data.frame(loadings)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Melt for plotting
+library(reshape2)
+loadings_melt <- melt(loadings_df, id.vars = "Variable", variable.name = "Dimension", value.name = "Loading")
+
+# Plot loadings for each dimension
+for (dim in unique(loadings_melt$Dimension)) {
+  dim_data <- subset(loadings_melt, Dimension == dim)
+  
+  plot <- ggplot(dim_data, aes(x = Variable, y = Loading, fill = Loading)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Variable Loadings for", dim),
+         x = "Variable",
+         y = "Loading") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0)
+  
+  print(plot)
+}
+
+```
+
+
