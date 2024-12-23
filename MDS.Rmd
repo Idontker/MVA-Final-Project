@@ -1,0 +1,435 @@
+
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(readr)
+### Data Preparation
+
+# Load the dataset
+# Assuming the dataset is already available as 'data'
+data <- read.csv("Automobile_data.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+
+# Replace "?" with NA for handling missing values
+data[data == "?"] <- NA
+
+# Convert numerical variables to numeric type
+numerical_vars <- c("symboling", "normalized.losses", "wheel.base", "engine.size", 
+                    "bore", "stroke", "compression.ratio", "horsepower", 
+                    "peak.rpm", "city.mpg", "highway.mpg", "price")
+
+
+data[numerical_vars] <- lapply(data[numerical_vars], as.numeric)
+
+# Calculate the count of missing values per column
+missing_counts <- colSums(is.na(data))
+
+# Convert to a data frame for plotting
+missing_df <- data.frame(
+  Variable = names(missing_counts),
+  MissingValues = missing_counts
+)
+
+# Filter out columns with zero missing values (optional)
+missing_df <- missing_df %>% filter(MissingValues > 0)
+
+
+# Drop the 'normalized-losses' and 'symboling' columns
+data <- data %>% select(-`normalized.losses`)
+
+data <- data %>% select(- `symboling`)
+
+# Impute missing values for categorical and numerical variables
+
+#### Starting with number of doors
+
+# lets observe the NAs for the number of doors based on their body style
+
+table_with_na <- table(data$make, addNA(data$num.of.doors))
+
+# Rename the NA level for better readability
+colnames(table_with_na)[is.na(colnames(table_with_na))] <- "NA"
+
+# Display the table
+# print(table_with_na)
+#Plot body style vs number of doors (color:make)
+#f <- ggplot(data, aes(num.of.doors, body.style))
+#f + geom_jitter(aes(color=make))
+
+#f2 <- ggplot(subset(data,make=="mazda" | make=="dodge"), aes(num.of.doors, body.style))
+#f2 + geom_jitter(aes(color=make))
+
+
+# Impute missing values for 'num.of.doors' using "four" for NA values
+data$num.of.doors[is.na(data$num.of.doors)] <- "four"
+
+# Impute missing values for 'bore' using mean
+data$bore[is.na(data$bore)] <- mean(data$bore, na.rm = TRUE)
+
+# Impute missing values for 'stroke' using median
+data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
+
+# Impute missing values for 'horsepower' using mean
+data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
+
+# Impute missing values for 'peak.rpm' using mean
+data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
+
+# Impute missing values for 'price' using regression
+if ("price" %in% colnames(data)) {
+  price_model <- lm(price ~ engine.size + horsepower + curb.weight, data = data, na.action = na.exclude)
+  data$price[is.na(data$price)] <- predict(price_model, newdata = data[is.na(data$price), ])
+}
+# Preprocessing
+
+df <- data
+
+############################
+## drop compression rate
+############################
+df <- subset(df, select = -c(compression.ratio))
+
+############################
+## drop stroke
+############################
+df <- subset(df, select = -c(stroke))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$area <- df$width * df$length
+
+df <- subset(df, select = -c(width, length))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$mpg <- rowMeans(df[, c("city.mpg", "highway.mpg")], na.rm = TRUE)
+
+df <- df[, !colnames(df) %in% c("city.mpg", "highway.mpg")]
+
+############################
+## drop insurance  data
+############################
+
+categorial_vars.all <- c("make", "symboling", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system")
+
+for (cat_var in categorial_vars.all) {
+  if (cat_var %in% colnames(df)) {
+    df[[cat_var]] <- as.factor(df[[cat_var]])
+  }
+}
+
+
+numerical_vars.all <- c("normalized.losses", "wheel.base", "length", "width", "height",
+                        "area", "crub.weight", "engine.size", "bore", "stroke",
+                        "horsepower", "peak.rpm", "city.mpg", "highway.mpg", "mpg", "price")
+
+for (num_var in numerical_vars.all) {
+  if (num_var %in% colnames(df)) {
+    df[[num_var]] <- as.numeric(as.character(df[[num_var]]))
+  }
+}
+
+data <-df
+```
+
+
+
+
+
+
+```{r}
+#data <- read.csv("./Automobile_data.csv", header = TRUE, sep = ",")
+
+# Load necessary library
+library(FactoMineR)
+library(factoextra)
+library(cluster) # For Gower distance
+library(ggplot2) # For heatmap visualizationà
+
+#install.packages("ggforce")
+
+
+library(ggforce) # For cluster visualization with convex hull
+
+# Step 1: Select numerical variables
+numerical_data <- data[, sapply(data, is.numeric) & names(data) != "price"]
+
+
+# Scale the numerical variables
+scaled_numerical_data <- scale(numerical_data)
+
+# Step 2: Select all categorical variables as supplementary qualitative variables
+categorical_vars <- c("make", "fuel.type", "aspiration", "num.of.doors", 
+                      "body.style", "drive.wheels", "engine.location", 
+                      "engine.type", "num.of.cylinders", "fuel.system")
+categorical_variables <- data[, categorical_vars]
+
+# Convert categorical variables to factors
+categorical_variables[] <- lapply(categorical_variables, as.factor)
+
+# Multidimensional Scaling Analysis
+# Compute the Euclidean distance matrix
+dist_matrix <- dist(scaled_numerical_data)
+
+# Apply MDS with Euclidean distance
+mds_result_euclidean <- cmdscale(dist_matrix, eig = TRUE)
+mds_points_euclidean <- mds_result_euclidean$points
+
+# Apply MDS with Manhattan distance
+manhattan_dist_matrix <- dist(scaled_numerical_data, method = "manhattan")
+mds_result_manhattan <- cmdscale(manhattan_dist_matrix, eig = TRUE)
+mds_points_manhattan <- mds_result_manhattan$points
+
+# ===================== Gower MDS =====================
+
+# Combine numerical and categorical variables
+combined_data <- cbind(scaled_numerical_data, categorical_variables)
+
+# Compute Gower distance
+gower_dist_matrix <- daisy(combined_data, metric = "gower")
+
+# Apply MDS with Gower distance
+mds_result_gower <- cmdscale(gower_dist_matrix, eig = TRUE)
+mds_points_gower <- mds_result_gower$points
+
+# ===================== Visualize MDS with Price Heatmap =====================
+
+# Add price column to MDS results
+euclidean_mds_df <- data.frame(Coordinate1 = mds_points_euclidean[, 1], 
+                               Coordinate2 = mds_points_euclidean[, 2], 
+                               Price = data$price)
+
+manhattan_mds_df <- data.frame(Coordinate1 = mds_points_manhattan[, 1], 
+                               Coordinate2 = mds_points_manhattan[, 2], 
+                               Price = data$price)
+
+gower_mds_df <- data.frame(Coordinate1 = mds_points_gower[, 1], 
+                           Coordinate2 = mds_points_gower[, 2], 
+                           Price = data$price)
+
+# Plot Euclidean MDS with Price Heatmap
+ggplot(euclidean_mds_df, aes(x = Coordinate1, y = Coordinate2, color = Price)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  labs(title = "MDS with Euclidean Distance - Price Heatmap", x = "Coordinate 1", y = "Coordinate 2", color = "Price")
+
+# Plot Manhattan MDS with Price Heatmap
+ggplot(manhattan_mds_df, aes(x = Coordinate1, y = Coordinate2, color = Price)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  labs(title = "MDS with Manhattan Distance - Price Heatmap", x = "Coordinate 1", y = "Coordinate 2", color = "Price")
+
+# Plot Gower MDS with Price Heatmap
+ggplot(gower_mds_df, aes(x = Coordinate1, y = Coordinate2, color = Price)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  labs(title = "MDS with Gower Distance - Price Heatmap", x = "Coordinate 1", y = "Coordinate 2", color = "Price")
+
+
+
+
+# ===================== Hierarchical Clustering on MDS =====================
+
+# Hierarchical clustering for Euclidean MDS
+euclidean_hc <- hclust(dist(mds_points_euclidean), method = "ward.D2")
+plot(euclidean_hc, main = "Hierarchical Clustering on Euclidean MDS", xlab = "", sub = "")
+rect.hclust(euclidean_hc, k = 3, border = "red")
+
+# Hierarchical clustering for Manhattan MDS
+manhattan_hc <- hclust(dist(mds_points_manhattan), method = "ward.D2")
+plot(manhattan_hc, main = "Hierarchical Clustering on Manhattan MDS", xlab = "", sub = "")
+rect.hclust(manhattan_hc, k = 3, border = "red")
+
+# Hierarchical clustering for Gower MDS
+gower_hc <- hclust(dist(mds_points_gower), method = "ward.D2")
+plot(gower_hc, main = "Hierarchical Clustering on Gower MDS", xlab = "", sub = "")
+rect.hclust(gower_hc, k = 3, border = "red")
+
+
+
+
+# Function to perform hierarchical clustering and visualize convex hull
+plot_clusters_with_hulls <- function(mds_points, title, price) {
+  hc <- hclust(dist(mds_points), method = "ward.D2")
+  clusters <- cutree(hc, k = 3)
+  mds_df <- data.frame(Coordinate1 = mds_points[, 1], 
+                       Coordinate2 = mds_points[, 2], 
+                       Cluster = as.factor(clusters), 
+                       Price = price)
+  
+  ggplot(mds_df, aes(x = Coordinate1, y = Coordinate2, color = Cluster)) +
+    geom_point(size = 3, aes(shape = Cluster)) +
+    geom_mark_hull(aes(group = Cluster, fill = Cluster), alpha = 0.2, show.legend = FALSE) +
+    scale_color_brewer(palette = "Set1") +
+    theme_minimal() +
+    labs(title = title, x = "Coordinate 1", y = "Coordinate 2", color = "Cluster")
+}
+
+# Plot Euclidean MDS with hierarchical clusters
+plot_clusters_with_hulls(mds_points_euclidean, "", data$price)
+
+# Plot Manhattan MDS with hierarchical clusters
+plot_clusters_with_hulls(mds_points_manhattan, "Hierarchical Clustering on Manhattan MDS", data$price)
+
+# Plot Gower MDS with hierarchical clusters
+plot_clusters_with_hulls(mds_points_gower, "", data$price)
+```
+
+```{r}
+cor1<-cor(mds_points_euclidean[, 1], scaled_numerical_data)
+cor2<-cor(mds_points_euclidean[, 2], scaled_numerical_data)
+
+# Plot the correlation matrix
+library(corrplot)
+corrplot(cor1, method = "color", type = "upper", tl.col = "black", tl.srt = 45,
+         title = "Euclidean Correlation with Coordinate 1", addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 1, 0))
+
+# Plot the correlation matrix
+library(corrplot)
+corrplot(cor2, method = "color", type = "upper", tl.col = "black", tl.srt = 45,
+         title = "Euclidean Correlation with Coordinate 2", addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 1, 0))
+```
+
+```{r}
+# Compute correlations between Gower MDS coordinates and numerical variables
+cor1_gower <- cor(mds_points_gower[, 1], scaled_numerical_data)
+cor2_gower <- cor(mds_points_gower[, 2], scaled_numerical_data)
+
+# Plot the correlation matrix for Coordinate 1
+library(corrplot)
+corrplot(
+  cor1_gower, 
+  method = "color", 
+  type = "upper", 
+  tl.col = "black", 
+  tl.srt = 45,
+  title = "", 
+  addCoef.col = "black", 
+  number.cex = 0.7, 
+  mar = c(0, 0, 1, 0)
+)
+
+# Plot the correlation matrix for Coordinate 2
+corrplot(
+  cor2_gower, 
+  method = "color", 
+  type = "upper", 
+  tl.col = "black", 
+  tl.srt = 45,
+  title = "", 
+  addCoef.col = "black", 
+  number.cex = 0.7, 
+  mar = c(0, 0, 1, 0)
+)
+
+```
+
+
+
+
+```{r}
+# Example: Create a new dataframe with clusters and original data
+mds_df_euclidean <- data.frame(
+  Coordinate1 = mds_points_euclidean[, 1], 
+  Coordinate2 = mds_points_euclidean[, 2], 
+  Price = data$price, 
+  Cluster = as.factor(cutree(euclidean_hc, k = 3))  # Replace 3 with the number of clusters
+)
+
+# Get summary statistics for each cluster
+cluster_summary <- mds_df_euclidean %>%
+  group_by(Cluster) %>%
+  summarise(
+    avg_price = mean(Price),
+    avg_wheelbase = mean(data$wheel.base),
+    avg_curb_weight = mean(data$curb.weight),
+    avg_engine_size = mean(data$engine.size),
+    avg_horsepower = mean(data$horsepower),
+    avg_mpg = mean(data$city.mpg)
+  )
+
+# View the summary statistics for each cluster
+print(cluster_summary)
+
+```
+
+
+```{r}
+# Example: Create a new dataframe with clusters and original data
+mds_df_gower <- data.frame(
+  Coordinate1 = mds_points_gower[, 1], 
+  Coordinate2 = mds_points_gower[, 2], 
+  Price = data$price, 
+  Cluster = as.factor(cutree(gower_hc, k = 3))  # Replace 3 with the number of clusters
+)
+
+# Get summary statistics for each cluster
+cluster_summary <- mds_df_gower %>%
+  group_by(Cluster) %>%
+  summarise(
+    avg_price = mean(Price),
+    avg_wheelbase = mean(data$wheel.base),
+    avg_curb_weight = mean(data$curb.weight),
+    avg_engine_size = mean(data$engine.size),
+    avg_horsepower = mean(data$horsepower),
+    avg_mpg = mean(data$city.mpg)
+  )
+
+# View the summary statistics for each cluster
+print(cluster_summary)
+```
+
+
+```{r}
+# Create plots for each categorical variable
+for (cat_var in categorical_vars) {
+  plot(mds_points_euclidean[, 1], mds_points_euclidean[, 2], 
+       xlab = "Coordinate 1", ylab = "Coordinate 2", 
+       main = paste("MDS with Euclidean Distance - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+
+# Create plots for each categorical variable
+for (cat_var in categorical_vars) {
+  plot(mds_points_gower[, 1], mds_points_gower[, 2], 
+       xlab = "Coordinate 1", ylab = "Coordinate 2", 
+       main = paste("MDS with Gower Distance - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+```
+
+
+```{r}
+# Create plots for each categorical variable
+for (cat_var in categorical_vars) {
+  plot(mds_points_gower[, 1], mds_points_gower[, 2], 
+       xlab = "Coordinate 1", ylab = "Coordinate 2", 
+       main = paste("MDS with Gower Distance - Colored by", cat_var), 
+       pch = 19, col = as.factor(data[[cat_var]]))
+  legend("topright", legend = levels(as.factor(data[[cat_var]])), 
+         col = 1:length(levels(as.factor(data[[cat_var]]))), 
+         pch = 19, title = cat_var)
+}
+```
+
+
