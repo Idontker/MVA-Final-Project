@@ -1,0 +1,313 @@
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(readr)
+### Data Preparation
+
+# Load the dataset
+
+data <- read.csv("Automobile_data.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+
+# Replace "?" with NA for handling missing values
+data[data == "?"] <- NA
+
+# Convert numerical variables to numeric type
+numerical_vars <- c("symboling", "normalized.losses", "wheel.base", "engine.size", 
+                    "bore", "stroke", "compression.ratio", "horsepower", 
+                    "peak.rpm", "city.mpg", "highway.mpg", "price")
+
+
+data[numerical_vars] <- lapply(data[numerical_vars], as.numeric)
+
+# Calculate the count of missing values per column
+missing_counts <- colSums(is.na(data))
+
+# Convert to a data frame for plotting
+missing_df <- data.frame(
+  Variable = names(missing_counts),
+  MissingValues = missing_counts
+)
+
+# Filter out columns with zero missing values (optional)
+missing_df <- missing_df %>% filter(MissingValues > 0)
+
+# Plot of missing  values
+
+# Plot the distribution of missing values
+ggplot(missing_df, aes(x = reorder(Variable, -MissingValues), y = MissingValues)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(
+       x = "Variable",
+       y = "Count of Missing Values") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+# Drop columns and Impute Missing Values
+```{r}
+# DROP the 'normalized-losses' and 'symboling' columns
+data <- data %>% select(-`normalized.losses`)
+
+data <- data %>% select(- `symboling`)
+
+
+# IMPUTE MISSING VALUES for categorical and numerical variables
+
+
+# Impute missing values for 'num.of.doors' using "four" for NA values
+data$num.of.doors[is.na(data$num.of.doors)] <- "four"
+
+# Impute missing values for 'bore' using mean
+data$bore[is.na(data$bore)] <- mean(data$bore, na.rm = TRUE)
+
+# Impute missing values for 'stroke' using median
+data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
+
+# Impute missing values for 'horsepower' using mean
+data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
+
+# Impute missing values for 'peak.rpm' using mean
+data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
+
+# Impute missing values for 'price' using regression
+if ("price" %in% colnames(data)) {
+  price_model <- lm(price ~ engine.size + horsepower + curb.weight, data = data, na.action = na.exclude)
+  data$price[is.na(data$price)] <- predict(price_model, newdata = data[is.na(data$price), ])
+}
+
+
+```
+
+# Analysis of num of doors for body style to justify the imputation of its missing values
+```{r}
+
+#Plot body style vs number of doors (color:make)
+f <- ggplot(data, aes(num.of.doors, body.style))
+f + geom_jitter(aes(color=make))
+
+
+f2 <- ggplot(subset(data,make=="mazda" | make=="dodge"), aes(num.of.doors, body.style))
+f2 + geom_jitter(aes(color=make))
+
+```
+
+
+# Correlation Matrix BEFORE preprocessing
+
+```{r}
+# Ensure only numeric columns are used
+numeric_data <- data[, sapply(data, is.numeric)]
+
+# Check the structure of the numeric dataset
+str(numeric_data)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot the correlation matrix
+library(corrplot)
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45,
+         title = "", addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 1, 0))
+
+```
+
+# Cramer's V for correlation of categorical data
+```{r}
+library(vcd)  # For calculating Cramér's V using `assocstats`
+
+categorical_vars <- data %>% select(make, fuel.type, aspiration, num.of.doors, 
+                                    body.style, drive.wheels, engine.location, 
+                                    engine.type, num.of.cylinders, fuel.system)
+# Function to calculate Cramér's V for two categorical variables
+cramers_v <- function(x, y) {
+  tbl <- table(x, y)
+  chi2 <- chisq.test(tbl)$statistic
+  n <- sum(tbl)
+  min_dim <- min(nrow(tbl) - 1, ncol(tbl) - 1)
+  sqrt(chi2 / (n * min_dim))
+}
+
+
+
+# Create a matrix to store Cramér's V values
+n <- ncol(categorical_vars)
+cramers_v_matrix <- matrix(NA, n, n, dimnames = list(names(categorical_vars), names(categorical_vars)))
+
+# Compute Cramér's V for each pair of categorical variables
+for (i in 1:n) {
+  for (j in 1:n) {
+    if (i != j) {
+      cramers_v_matrix[i, j] <- cramers_v(categorical_vars[[i]], categorical_vars[[j]])
+    } else {
+      cramers_v_matrix[i, j] <- 1  # Diagonal is set to 1
+    }
+  }
+}
+
+# Round the matrix for readability
+cramers_v_matrix <- round(cramers_v_matrix, 2)
+
+# Find pairs with Cramér's V > 0.7 (high correlation)
+high_corr <- which(cramers_v_matrix > 0.6 & cramers_v_matrix < 1, arr.ind = TRUE)
+
+# Create a data frame of highly correlated variable pairs
+high_corr_pairs <- data.frame(
+  Variable1 = rownames(cramers_v_matrix)[high_corr[, 1]],
+  Variable2 = colnames(cramers_v_matrix)[high_corr[, 2]],
+  Cramers_V = cramers_v_matrix[high_corr]
+)
+
+# Remove duplicate pairs (since the matrix is symmetric)
+high_corr_pairs <- high_corr_pairs[high_corr_pairs$Variable1 < high_corr_pairs$Variable2, ]
+
+# Display the highly correlated pairs
+print(high_corr_pairs)
+
+# Plot the correlation matrix
+library(corrplot)
+corrplot(cramers_v_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45,
+         title = "", addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 1, 0))
+
+```
+
+
+PREPROCESSING
+
+```{r}
+
+df <- data
+
+############################
+## drop compression rate
+############################
+df <- subset(df, select = -c(compression.ratio))
+
+############################
+## drop stroke
+############################
+df <- subset(df, select = -c(stroke))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$area <- df$width * df$length
+
+df <- subset(df, select = -c(width, length))
+
+############################
+## Construct area form width
+## and length. Then drop
+## redundant values
+############################
+df$mpg <- rowMeans(df[, c("city.mpg", "highway.mpg")], na.rm = TRUE)
+
+df <- df[, !colnames(df) %in% c("city.mpg", "highway.mpg")]
+
+############################
+## drop insurance  data
+############################
+
+categorial_vars.all <- c("make", "symboling", "fuel.type", "aspiration",
+                         "num.of.doors", "body.style", "drive.wheels", "engine.location",
+                         "engine.type", "num.of.cylinders", "fuel.system")
+
+for (cat_var in categorial_vars.all) {
+  if (cat_var %in% colnames(df)) {
+    df[[cat_var]] <- as.factor(df[[cat_var]])
+  }
+}
+
+
+numerical_vars.all <- c("normalized.losses", "wheel.base", "length", "width", "height",
+                        "area", "crub.weight", "engine.size", "bore", "stroke",
+                        "horsepower", "peak.rpm", "city.mpg", "highway.mpg", "mpg", "price")
+
+for (num_var in numerical_vars.all) {
+  if (num_var %in% colnames(df)) {
+    df[[num_var]] <- as.numeric(as.character(df[[num_var]]))
+  }
+}
+
+data <-df
+```
+
+
+MCA and relevant graphs
+
+```{r}
+### Select Categorical Variables for MCA
+categorical_vars <- data %>% select(make, fuel.type, aspiration, num.of.doors, 
+                                    body.style, drive.wheels, engine.location, 
+                                    engine.type, num.of.cylinders, fuel.system)
+
+# Ensure all selected variables are factors
+categorical_vars <- categorical_vars %>% mutate(across(everything(), as.factor))
+
+### Perform MCA
+mca_result <- MCA(categorical_vars, graph = FALSE)
+
+# Summary of MCA
+summary(mca_result)
+
+### Visualize MCA Results
+
+# Scree Plot of Eigenvalues
+fviz_screeplot(mca_result, addlabels = TRUE, ylim = c(0, 50))
+
+
+# Cloud of Categories
+fviz_mca_var(mca_result, 
+             col.var = "cos2", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "MCA - Categories Plot")
+
+# Biplot of Individuals and Categories
+fviz_mca_biplot(mca_result, 
+                repel = TRUE, 
+                col.var = "darkred", 
+                col.ind = "blue", 
+                title = "MCA - Biplot of Individuals and Categories")
+
+
+# Plot the variables in the MCA space
+fviz_mca_var(mca_result, 
+             choice = "var", 
+             gradient.cols = c("blue", "yellow", "red"), 
+             repel = TRUE, 
+             title = "Variables in MCA Space")
+
+
+# Cos2 of variable categories on Dim.1 and Dim.2
+
+fviz_cos2(mca_result, choice = "var", axes = 1:2)
+
+```
+
+
+Contributions to Dimensions 1, 2, 3
+
+```{r}
+### Analyze the Contributions of Variables to Dimensions
+
+# Contributions of Categories to the First Dimension
+fviz_contrib(mca_result, choice = "var", axes = 1, top = 10, 
+             title = "")
+
+# Contributions of Categories to the Second Dimension
+fviz_contrib(mca_result, choice = "var", axes = 2, top = 10, 
+             title = "")
+
+# Contributions of Categories to the Third Dimension
+fviz_contrib(mca_result, choice = "var", axes = 3, top = 10, 
+             title = "")
+
+```
+
