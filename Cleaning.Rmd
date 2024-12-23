@@ -113,15 +113,28 @@ data$stroke[is.na(data$stroke)] <- median(data$stroke, na.rm = TRUE)
 # Impute missing values for 'horsepower' using mean
 data$horsepower[is.na(data$horsepower)] <- mean(data$horsepower, na.rm = TRUE)
 
-# Impute missing values for 'num-of-doors' using mode
-data$num.of.doors[is.na(data$num.of.doors)] <- "four"
-
 # Impute missing values for 'peak-rpm' using mean
 data$peak.rpm[is.na(data$peak.rpm)] <- mean(data$peak.rpm, na.rm = TRUE)
 
+# Impute missing values for 'num-of-doors' to four based given the body.style (see analysis below)
+data$num.of.doors[is.na(data$num.of.doors)] <- "four"
+
 # Verify that missing values have been handled
 colSums(is.na(data))
+
 ```
+## Impute missing values of num of doors according to the body.style
+
+```{r}
+#Plot body style vs number of doors (color:make)
+f <- ggplot(data, aes(num.of.doors, body.style))
+f + geom_jitter(aes(color=make))
+
+
+f2 <- ggplot(subset(data,make=="mazda" | make=="dodge"), aes(num.of.doors, body.style))
+f2 + geom_jitter(aes(color=make))
+```
+
 ```{r}
 write.csv(data, file = "./cleaned_data.csv", row.names = FALSE)
 ```
